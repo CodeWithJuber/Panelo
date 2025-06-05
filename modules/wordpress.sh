@@ -465,7 +465,10 @@ EOF
     fi
 }
 
-deploy_wordpress
+# Execute the deployment when script is run directly
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    deploy_wordpress
+fi
 EOF
     
     chmod +x "$WORDPRESS_APPS_DIR/scripts/deploy-wordpress.sh"
