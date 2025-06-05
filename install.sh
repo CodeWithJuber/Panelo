@@ -209,7 +209,7 @@ install_components() {
             # NGINX already creates self-signed certs
         else
             echo -e "${GREEN}Setting up SSL/Let's Encrypt...${NC}"
-            bash "$INSTALL_DIR/modules/certbot.sh" "$DOMAIN" "$EMAIL"
+            bash "$INSTALL_DIR/modules/certbot.sh" install "$DOMAIN" "$EMAIL"
         fi
     fi
     
