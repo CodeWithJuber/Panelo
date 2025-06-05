@@ -265,8 +265,22 @@ install_components() {
 # Install panel frontend and backend
 install_panel() {
     echo -e "${GREEN}Installing Server Panel Frontend and Backend...${NC}"
-    bash "$INSTALL_DIR/modules/panel-frontend.sh" install "$DOMAIN"
+    
+    # Ensure Docker network exists
+    docker network create server-panel 2>/dev/null || true
+    
+    # Install backend first
     bash "$INSTALL_DIR/modules/panel-backend.sh" "$DATABASE"
+    
+    # Install frontend
+    bash "$INSTALL_DIR/modules/panel-frontend.sh" install "$DOMAIN"
+    
+    # Wait for services to be ready
+    sleep 10
+    
+    # Verify services are running
+    echo -e "${BLUE}Verifying panel services...${NC}"
+    docker ps | grep -E "(panel|server)" || echo "No panel containers found"
 }
 
 # Configure firewall
