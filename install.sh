@@ -53,8 +53,12 @@ detect_server_info() {
     # Set domain to IP address for direct access
     DOMAIN="$public_ip"
     
+    # Set default email for SSL (not needed for IP addresses but required for parameter)
+    EMAIL="admin@${hostname}"
+    
     echo -e "${GREEN}✓ Server IP: $public_ip${NC}"
     echo -e "${GREEN}✓ Hostname: $hostname${NC}"
+    echo -e "${GREEN}✓ Default email: $EMAIL${NC}"
     echo -e "${GREEN}✓ Panel will be accessible at: https://$DOMAIN:3000${NC}"
 }
 
@@ -204,11 +208,13 @@ install_components() {
     
     # Install SSL support
     if [[ "$selected_components" == *"ssl"* ]]; then
-        if [[ "$DOMAIN" == "127.0.0.1" ]] || [[ "$DOMAIN" == *"localhost"* ]] || [[ "$DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo -e "${BLUE}Using self-signed SSL certificates for IP address${NC}"
+        echo -e "${BLUE}SSL Configuration - Domain: '$DOMAIN', Email: '$EMAIL'${NC}"
+        if [[ "$DOMAIN" == "127.0.0.1" ]] || [[ "$DOMAIN" == *"localhost"* ]] || [[ "$DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ "$DOMAIN" =~ ^[0-9a-fA-F:]+$ ]]; then
+            echo -e "${BLUE}Using self-signed SSL certificates for IP address: $DOMAIN${NC}"
             # NGINX already creates self-signed certs
         else
-            echo -e "${GREEN}Setting up SSL/Let's Encrypt...${NC}"
+            echo -e "${GREEN}Setting up SSL/Let's Encrypt for domain: $DOMAIN${NC}"
+            echo -e "${BLUE}Running: bash \"$INSTALL_DIR/modules/certbot.sh\" install \"$DOMAIN\" \"$EMAIL\"${NC}"
             bash "$INSTALL_DIR/modules/certbot.sh" install "$DOMAIN" "$EMAIL"
         fi
     fi
