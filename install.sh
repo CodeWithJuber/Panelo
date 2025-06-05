@@ -5,11 +5,10 @@
 # Supports Docker-based isolation, multiple webservers, databases, and applications
 #
 # Usage:
-#   Auto-install everything:      sudo ./install.sh
-#   Auto-install with domain:     sudo ./install.sh mydomain.com admin@mydomain.com
-#   Interactive install:          sudo AUTO_INSTALL=false ./install.sh
+#   sudo ./install.sh
 #
-# Auto-install installs: NGINX, MySQL, WordPress, PHP, Node.js, Python, FileManager, SSL, Monitoring, Backup
+# Installs: NGINX, MySQL, WordPress, PHP, Node.js, Python, FileManager, SSL, Monitoring, Backup
+# Zero configuration required - fully automated like cPanel
 
 set -e
 
@@ -27,9 +26,9 @@ WEB_SERVER="nginx"
 DATABASE="mysql"
 APPS=()
 INSTALL_FILEMANAGER="yes"
-DOMAIN="${1:-panel.localhost}"
-EMAIL="${2:-admin@localhost}"
-AUTO_INSTALL="${AUTO_INSTALL:-true}"
+DOMAIN=""
+EMAIL="admin@panelo.local"
+AUTO_INSTALL="true"
 
 # Check if running as root
 check_root() {
@@ -37,6 +36,26 @@ check_root() {
         echo -e "${RED}This script must be run as root${NC}"
         exit 1
     fi
+}
+
+# Auto-detect server information
+detect_server_info() {
+    echo -e "${BLUE}Auto-detecting server configuration...${NC}"
+    
+    # Get server's public IP
+    local public_ip
+    public_ip=$(curl -s ifconfig.me 2>/dev/null || curl -s ipinfo.io/ip 2>/dev/null || curl -s icanhazip.com 2>/dev/null || echo "127.0.0.1")
+    
+    # Get hostname
+    local hostname
+    hostname=$(hostname -f 2>/dev/null || hostname 2>/dev/null || echo "panelo")
+    
+    # Set domain to IP address for direct access
+    DOMAIN="$public_ip"
+    
+    echo -e "${GREEN}✓ Server IP: $public_ip${NC}"
+    echo -e "${GREEN}✓ Hostname: $hostname${NC}"
+    echo -e "${GREEN}✓ Panel will be accessible at: https://$DOMAIN:3000${NC}"
 }
 
 # Check OS compatibility
@@ -47,115 +66,35 @@ check_os() {
     fi
     
     source /etc/os-release
-    if [[ "$ID" != "ubuntu" ]] && [[ "$ID" != "centos" ]] && [[ "$ID" != "debian" ]]; then
-        echo -e "${YELLOW}Warning: This installer is tested on Ubuntu, CentOS, and Debian${NC}"
-    fi
+    echo -e "${GREEN}✓ Detected OS: $PRETTY_NAME${NC}"
 }
 
-# Install dialog for interactive menus (only if not auto-installing)
+# No longer needed - fully automated
 install_dialog() {
-    if [[ "$AUTO_INSTALL" != "true" ]]; then
-        echo -e "${BLUE}Installing dialog for interactive menus...${NC}"
-        if command -v apt-get >/dev/null 2>&1; then
-            apt-get update && apt-get install -y dialog
-        elif command -v yum >/dev/null 2>&1; then
-            yum install -y dialog
-        elif command -v dnf >/dev/null 2>&1; then
-            dnf install -y dialog
-        fi
-    fi
+    # Completely automated - no dialog needed
+    return 0
 }
 
-# Main configuration menu
+# Auto-install all components - no menu
 show_main_menu() {
-    if [[ "$AUTO_INSTALL" == "true" ]]; then
-        # Auto-install all components
-        echo "nginx mysql wordpress php nodejs python filemanager ssl monitoring backup"
-        return
-    fi
-    
-    local choices
-    choices=$(dialog --checklist "Choose components to install:" 22 70 12 \
-        "nginx" "NGINX Web Server" on \
-        "apache" "Apache Web Server" off \
-        "mysql" "MySQL Database" on \
-        "postgres" "PostgreSQL Database" off \
-        "wordpress" "WordPress Support" on \
-        "php" "PHP Support (Laravel, CodeIgniter)" on \
-        "nodejs" "Node.js Support (Express, Next.js)" on \
-        "python" "Python Support (Flask, Django)" on \
-        "filemanager" "File Manager (FileBrowser)" on \
-        "ssl" "SSL/Let's Encrypt" on \
-        "monitoring" "Monitoring (Prometheus, Grafana)" on \
-        "backup" "Automated Backup System" on 3>&1 1>&2 2>&3)
-    
-    if [[ $? -eq 0 ]]; then
-        echo "$choices" | tr -d '"'
-    else
-        echo -e "${RED}Installation cancelled${NC}"
-        exit 1
-    fi
+    echo "nginx mysql wordpress php nodejs python filemanager ssl monitoring backup"
 }
 
-# Web server selection
+# Web server selection - auto NGINX
 select_webserver() {
-    if [[ "$AUTO_INSTALL" == "true" ]]; then
-        WEB_SERVER="nginx"
-        return
-    fi
-    
-    local server
-    server=$(dialog --radiolist "Select primary web server:" 12 50 2 \
-        "nginx" "NGINX (Recommended)" on \
-        "apache" "Apache HTTP Server" off 3>&1 1>&2 2>&3)
-    
-    if [[ $? -eq 0 ]]; then
-        WEB_SERVER=$(echo "$server" | tr -d '"')
-    else
-        WEB_SERVER="nginx"
-    fi
+    WEB_SERVER="nginx"
 }
 
-# Database selection
+# Database selection - auto MySQL
 select_database() {
-    if [[ "$AUTO_INSTALL" == "true" ]]; then
-        DATABASE="mysql"
-        return
-    fi
-    
-    local db
-    db=$(dialog --radiolist "Select primary database:" 12 50 2 \
-        "mysql" "MySQL (Recommended)" on \
-        "postgres" "PostgreSQL" off 3>&1 1>&2 2>&3)
-    
-    if [[ $? -eq 0 ]]; then
-        DATABASE=$(echo "$db" | tr -d '"')
-    else
-        DATABASE="mysql"
-    fi
+    DATABASE="mysql"
 }
 
-# Domain and email input
+# Domain and email - auto-detected
 get_domain_info() {
-    if [[ "$AUTO_INSTALL" == "true" ]]; then
-        # Use command line arguments or defaults
-        if [[ -z "$DOMAIN" ]]; then
-            DOMAIN="panel.localhost"
-        fi
-        if [[ -z "$EMAIL" ]]; then
-            EMAIL="admin@localhost"
-        fi
-        echo -e "${BLUE}Using Domain: $DOMAIN, Email: $EMAIL${NC}"
-        return
-    fi
-    
-    DOMAIN=$(dialog --inputbox "Enter your domain name (e.g., panel.example.com):" 8 60 3>&1 1>&2 2>&3)
-    EMAIL=$(dialog --inputbox "Enter your email for SSL certificates:" 8 60 3>&1 1>&2 2>&3)
-    
-    if [[ -z "$DOMAIN" ]] || [[ -z "$EMAIL" ]]; then
-        echo -e "${RED}Domain and email are required${NC}"
-        exit 1
-    fi
+    # Domain already set by detect_server_info()
+    echo -e "${GREEN}✓ Using server IP: $DOMAIN${NC}"
+    echo -e "${GREEN}✓ Using email: $EMAIL${NC}"
 }
 
 # Create directory structure
@@ -265,9 +204,9 @@ install_components() {
     
     # Install SSL support
     if [[ "$selected_components" == *"ssl"* ]]; then
-        if [[ "$DOMAIN" == *"localhost"* ]] || [[ "$DOMAIN" == "127.0.0.1" ]]; then
-            echo -e "${YELLOW}Skipping Let's Encrypt SSL for localhost/local domain${NC}"
-            echo -e "${BLUE}SSL will use self-signed certificates${NC}"
+        if [[ "$DOMAIN" == "127.0.0.1" ]] || [[ "$DOMAIN" == *"localhost"* ]] || [[ "$DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo -e "${BLUE}Using self-signed SSL certificates for IP address${NC}"
+            # NGINX already creates self-signed certs
         else
             echo -e "${GREEN}Setting up SSL/Let's Encrypt...${NC}"
             bash "$INSTALL_DIR/modules/certbot.sh" "$DOMAIN" "$EMAIL"
@@ -408,31 +347,29 @@ show_summary() {
     echo -e "• Deploy WordPress: /opt/server-panel/modules/wordpress.sh deploy <name> <domain> <email>"
     echo -e "• Monitoring Control: /var/server-panel/monitoring/control.sh [start|stop|restart]"
     echo ""
-    echo -e "${YELLOW}Note: Please save your admin credentials and configure DNS for $DOMAIN${NC}"
+    echo -e "${YELLOW}⚠️  Important: Save your admin credentials!${NC}"
+    echo -e "${YELLOW}💡 Access your panel directly via IP address: https://$DOMAIN:3000${NC}"
     echo ""
 }
 
 # Main installation function
 main() {
     clear
-    echo -e "${GREEN}========================================${NC}"
-    echo -e "${GREEN}    Server Panel Installer v1.0        ${NC}"
-    echo -e "${GREEN}========================================${NC}"
+    echo -e "${GREEN}================================================${NC}"
+    echo -e "${GREEN}    🚀 PANELO cPanel Alternative Installer     ${NC}"
+    echo -e "${GREEN}================================================${NC}"
     echo ""
-    
-    # Check for auto-install mode
-    if [[ "$AUTO_INSTALL" == "true" ]]; then
-        echo -e "${BLUE}Running in AUTO-INSTALL mode${NC}"
-        echo -e "${BLUE}Installing ALL components with NGINX + MySQL${NC}"
-        echo ""
-    fi
+    echo -e "${BLUE}🔄 Fully Automated Installation${NC}"
+    echo -e "${BLUE}📦 Installing: NGINX, MySQL, WordPress, PHP, Node.js, Python, FileManager, SSL, Monitoring${NC}"
+    echo ""
     
     # Preliminary checks
     check_root
     check_os
+    detect_server_info
     install_dialog
     
-    # Get user preferences
+    # Get configuration (all automatic)
     local selected_components
     selected_components=$(show_main_menu)
     select_webserver
@@ -440,10 +377,8 @@ main() {
     get_domain_info
     
     # Start installation
-    echo -e "${BLUE}Starting installation with selected components...${NC}"
-    if [[ "$AUTO_INSTALL" != "true" ]]; then
-        sleep 2
-    fi
+    echo ""
+    echo -e "${BLUE}🚀 Starting Panelo installation...${NC}"
     
     create_directories
     copy_project_files
