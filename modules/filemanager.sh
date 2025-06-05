@@ -30,6 +30,9 @@ install_filemanager() {
     # Deploy File Manager container
     deploy_filemanager_container
     
+    # Initialize File Manager database
+    initialize_filemanager_database
+    
     # Wait for File Manager to be ready
     wait_for_filemanager
     
@@ -68,11 +71,10 @@ create_filemanager_config() {
     "address": "0.0.0.0",
     "log": "stdout",
     "database": "/config/filebrowser.db",
-    "root": "/srv",
+    "root": "/srv/users",
     "noAuth": false,
     "signup": false,
     "createUserDir": true,
-    "userHomeBasePath": "/srv/users",
     "defaults": {
         "scope": "/srv/users",
         "locale": "en",
@@ -203,12 +205,11 @@ deploy_filemanager_container() {
         -v "$FILEBROWSER_CONFIG_DIR":/config \
         -v "$FILEBROWSER_DATA_DIR":/srv/users \
         -v /var/server-panel/apps:/srv/apps \
-        -v "$FILEBROWSER_CONFIG_DIR/setup.sh":/setup.sh \
         -e PUID=0 \
         -e PGID=0 \
         --restart unless-stopped \
         filebrowser/filebrowser:v"$FILEBROWSER_VERSION" \
-        /setup.sh
+        --config /config/config.json
     
     if [[ $? -eq 0 ]]; then
         log "SUCCESS" "File Manager container deployed successfully"
@@ -216,6 +217,26 @@ deploy_filemanager_container() {
         log "ERROR" "Failed to deploy File Manager container"
         return 1
     fi
+}
+
+initialize_filemanager_database() {
+    log "INFO" "Initializing File Manager database"
+    
+    # Wait for container to start
+    sleep 3
+    
+    # Initialize database if it doesn't exist
+    if [[ ! -f "$FILEBROWSER_CONFIG_DIR/filebrowser.db" ]]; then
+        docker exec "$FILEBROWSER_CONTAINER_NAME" filebrowser config init --database /config/filebrowser.db 2>/dev/null || true
+        docker exec "$FILEBROWSER_CONTAINER_NAME" filebrowser config set --database /config/filebrowser.db --auth.method=json 2>/dev/null || true
+        docker exec "$FILEBROWSER_CONTAINER_NAME" filebrowser users add admin admin --database /config/filebrowser.db --perm.admin=true 2>/dev/null || true
+        
+        # Restart container to apply configuration
+        docker restart "$FILEBROWSER_CONTAINER_NAME" >/dev/null 2>&1
+        sleep 3
+    fi
+    
+    log "SUCCESS" "File Manager database initialized"
 }
 
 wait_for_filemanager() {
