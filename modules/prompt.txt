@@ -1,0 +1,187 @@
+Here's a **complete prompt** that you can copy-paste into **ChatGPT, GitHub Copilot, or any advanced AI code generator** to create an **end-to-end cPanel-like server panel** project that:
+
+* Installs itself on a Linux server
+* Supports **Docker-based per-user isolation**
+* Supports **multiple webservers (Apache/Nginx)**
+* Supports **MySQL/PostgreSQL**
+* Installs apps like **WordPress**, **static HTML**, **PHP**, **Node.js**, **Python**
+* Provides a **file manager**, **SSL**, **DNS**, **admin/user panel**, and more
+
+---
+
+### ✅ Prompt to Generate Full Server Panel Project
+
+```
+You are an advanced DevOps AI and I want you to generate a full-scale server panel system like cPanel.
+
+**OBJECTIVE**:
+Build a complete server control panel that installs via a single bash script, supports web hosting for multiple users with Docker-based isolation, allows app deployment (WordPress, static sites, Node.js, PHP), includes database support, file manager, SSL via Let's Encrypt, and a modern admin + user panel UI.
+
+---
+
+### 1. INSTALLER SCRIPT
+
+Create an `install.sh` script that:
+
+- Installs dependencies: Docker, Docker Compose, Certbot, NGINX/Apache
+- Asks user via CLI (dialog/whiptail) to choose:
+  - Web server: `nginx` or `apache`
+  - Database: `mysql` or `postgres`
+  - Apps to install: WordPress, Static Site, PHP, Node, Python
+  - Install File Manager? Yes/No
+- Based on choices:
+  - Executes modular scripts from `/modules/`
+  - Sets up the reverse proxy (NGINX or Apache) with Docker
+  - Provisions user containers per app
+  - Adds SSL certs using Certbot
+  - Mounts volumes per user
+  - Sets up optional Cloudflare API for DNS
+
+---
+
+### 2. PROJECT STRUCTURE
+
+Create this folder structure:
+
+```
+
+server-panel/
+├── install.sh
+├── modules/
+│   ├── docker.sh
+│   ├── nginx.sh
+│   ├── apache.sh
+│   ├── mysql.sh
+│   ├── postgres.sh
+│   ├── wordpress.sh
+│   ├── filemanager.sh
+│   ├── certbot.sh
+│   ├── panel-frontend.sh
+│   └── helper.sh
+├── templates/
+│   ├── nginx-vhost.conf
+│   ├── apache-vhost.conf
+│   └── docker-compose.base.yml
+├── panel/
+│   ├── frontend/ (Next.js + Tailwind)
+│   └── backend/ (NestJS)
+
+````
+
+---
+
+### 3. FRONTEND PANEL (User + Admin)
+
+Create a modern dashboard using **Next.js + Tailwind CSS** with:
+
+- Auth system (JWT): login/register/forgot password
+- Role-based access: Admin, User
+- User can:
+  - View apps hosted
+  - Deploy WordPress/PHP/Node.js site
+  - Manage files (integrate File Browser or custom frontend)
+  - View usage stats (CPU, RAM, Bandwidth)
+- Admin can:
+  - View all users, suspend, assign limits
+  - Monitor container status
+
+---
+
+### 4. BACKEND API
+
+Use **NestJS** to build APIs:
+
+- User auth (register/login)
+- Create/Delete apps
+- Manage Docker containers dynamically
+- DB provisioning per user
+- SSL renewal queue (BullMQ)
+- Metrics API: per container resource usage (CPU, RAM, traffic)
+
+---
+
+### 5. APP SUPPORT
+
+Support these app types in `/modules/`:
+
+- WordPress: via official WP Docker image + db + volume
+- Static HTML: nginx container + bind mount + File Browser
+- PHP/Laravel: Apache/PHP container
+- Node.js: node:18-alpine container
+- Python/Flask: python container
+- Option to use custom Dockerfile
+
+---
+
+### 6. FILE MANAGER
+
+Install File Browser:
+
+```bash
+docker run -d \
+  -v /user_data/user1:/srv \
+  -e PUID=$(id -u) -e PGID=$(id -g) \
+  -e FB_USERNAME=user1 -e FB_PASSWORD=pass \
+  -p 8081:80 \
+  --name filebrowser \
+  filebrowser/filebrowser
+````
+
+* Create separate instances per user or multi-user mode
+
+---
+
+### 7. SSL & DNS
+
+* Automatically provision Let's Encrypt SSL using Certbot
+* Configure NGINX template per domain
+* Optionally support Cloudflare API for A/CNAME record management
+
+---
+
+### 8. SECURITY
+
+* All apps hosted via Docker with isolated networks and volumes
+* Only NGINX reverse proxy is exposed (80/443)
+* Fail2ban for SSH
+* Use Firewalld or UFW for open port restriction
+* JWT-auth and rate limiting on API
+
+---
+
+### 9. BONUS
+
+* Backup module: app + db dump + cron
+* Auto DNS & wildcard SSL for `*.yourdomain.com`
+* Optional WHMCS/Billing integration
+* Auto-cleanup orphaned containers/volumes
+* Git auto-deploy module (optional)
+
+---
+
+### 10. OUTPUT
+
+Output full source code as:
+
+* `install.sh` with all logic and menu flow
+* Each `modules/*.sh` for installable components
+* Full React + NestJS-based panel with clean UI/UX
+* Docker Compose files for each app type
+* Templates (nginx vhost, apache vhost, .env examples)
+
+Project must be production-grade and cleanly structured.
+
+```
+
+---
+
+### ✅ What to Do Next
+
+Use this prompt inside:
+
+- **ChatGPT 4 / GPT-4o**
+- **GitHub Copilot (ask for parts)**
+- **Any AI coding assistant that supports multi-file generation**
+
+If you'd like, I can begin **generating each part for you step-by-step** starting from `install.sh` or the folder structure. Let me know what you'd like to generate first.
+```
