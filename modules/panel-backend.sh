@@ -1731,6 +1731,255 @@ EOF
     log "SUCCESS" "Application management system created"
 }
 
+# Create monitoring system
+create_monitoring_system() {
+    log "INFO" "Creating monitoring system"
+    
+    # Create monitoring module
+    cat > "$BACKEND_DIR/src/monitoring/monitoring.module.ts" << 'EOF'
+import { Module } from '@nestjs/common';
+import { MonitoringController } from './monitoring.controller';
+import { MonitoringService } from './monitoring.service';
+
+@Module({
+  controllers: [MonitoringController],
+  providers: [MonitoringService],
+  exports: [MonitoringService]
+})
+export class MonitoringModule {}
+EOF
+
+    # Create monitoring controller
+    cat > "$BACKEND_DIR/src/monitoring/monitoring.controller.ts" << 'EOF'
+import { Controller, Get } from '@nestjs/common';
+import { MonitoringService } from './monitoring.service';
+
+@Controller('monitoring')
+export class MonitoringController {
+  constructor(private readonly monitoringService: MonitoringService) {}
+
+  @Get('system')
+  async getSystemInfo() {
+    return this.monitoringService.getSystemInfo();
+  }
+
+  @Get('services')
+  async getServicesStatus() {
+    return this.monitoringService.getServicesStatus();
+  }
+}
+EOF
+
+    # Create monitoring service
+    cat > "$BACKEND_DIR/src/monitoring/monitoring.service.ts" << 'EOF'
+import { Injectable } from '@nestjs/common';
+import * as si from 'systeminformation';
+
+@Injectable()
+export class MonitoringService {
+  async getSystemInfo() {
+    const [cpu, memory, disk, network] = await Promise.all([
+      si.cpu(),
+      si.mem(),
+      si.fsSize(),
+      si.networkInterfaces()
+    ]);
+
+    return {
+      cpu,
+      memory,
+      disk,
+      network
+    };
+  }
+
+  async getServicesStatus() {
+    const services = await si.services('nginx,mysql,docker');
+    return services;
+  }
+}
+EOF
+
+    log "SUCCESS" "Monitoring system created"
+}
+
+# Create DNS management system
+create_dns_management() {
+    log "INFO" "Creating DNS management system"
+    
+    # Create DNS module
+    cat > "$BACKEND_DIR/src/dns/dns.module.ts" << 'EOF'
+import { Module } from '@nestjs/common';
+import { DnsController } from './dns.controller';
+import { DnsService } from './dns.service';
+
+@Module({
+  controllers: [DnsController],
+  providers: [DnsService],
+  exports: [DnsService]
+})
+export class DnsModule {}
+EOF
+
+    # Create DNS controller
+    cat > "$BACKEND_DIR/src/dns/dns.controller.ts" << 'EOF'
+import { Controller, Get, Post, Body } from '@nestjs/common';
+import { DnsService } from './dns.service';
+
+@Controller('dns')
+export class DnsController {
+  constructor(private readonly dnsService: DnsService) {}
+
+  @Get('records')
+  async getDnsRecords() {
+    return this.dnsService.getDnsRecords();
+  }
+
+  @Post('records')
+  async createDnsRecord(@Body() recordData: any) {
+    return this.dnsService.createDnsRecord(recordData);
+  }
+}
+EOF
+
+    # Create DNS service
+    cat > "$BACKEND_DIR/src/dns/dns.service.ts" << 'EOF'
+import { Injectable } from '@nestjs/common';
+
+@Injectable()
+export class DnsService {
+  async getDnsRecords() {
+    // Placeholder implementation
+    return [];
+  }
+
+  async createDnsRecord(recordData: any) {
+    // Placeholder implementation
+    return { success: true, record: recordData };
+  }
+}
+EOF
+
+    log "SUCCESS" "DNS management system created"
+}
+
+# Create Docker configuration
+create_docker_config() {
+    log "INFO" "Creating Docker configuration"
+    
+    # Create Dockerfile for backend
+    cat > "$BACKEND_DIR/Dockerfile" << 'EOF'
+FROM node:18-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci --only=production
+
+COPY . .
+RUN npm run build
+
+EXPOSE 3001
+
+CMD ["npm", "run", "start:prod"]
+EOF
+
+    # Create docker-compose.yml
+    cat > "$BACKEND_DIR/docker-compose.yml" << 'EOF'
+version: '3.8'
+
+services:
+  backend:
+    build: .
+    container_name: server-panel-backend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3001:3001"
+    environment:
+      - NODE_ENV=production
+    volumes:
+      - ./.env:/app/.env:ro
+      - /var/server-panel:/app/data
+    networks:
+      - server-panel
+
+networks:
+  server-panel:
+    external: true
+EOF
+
+    log "SUCCESS" "Docker configuration created"
+}
+
+# Setup database schema
+setup_database_schema() {
+    log "INFO" "Setting up database schema"
+    
+    # Create user entity
+    cat > "$BACKEND_DIR/src/database/entities/user.entity.ts" << 'EOF'
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+
+@Entity('users')
+export class User {
+  @PrimaryGeneratedColumn()
+  id: number;
+
+  @Column({ unique: true })
+  email: string;
+
+  @Column()
+  password: string;
+
+  @Column()
+  name: string;
+
+  @Column({ default: 'user' })
+  role: string;
+
+  @Column({ default: true })
+  isActive: boolean;
+
+  @CreateDateColumn()
+  createdAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
+}
+EOF
+
+    log "SUCCESS" "Database schema setup completed"
+}
+
+# Install dependencies
+install_dependencies() {
+    log "INFO" "Installing backend dependencies"
+    
+    cd "$BACKEND_DIR"
+    npm install
+    
+    if [[ $? -eq 0 ]]; then
+        log "SUCCESS" "Backend dependencies installed"
+    else
+        log "ERROR" "Failed to install backend dependencies"
+        return 1
+    fi
+}
+
+# Build backend
+build_backend() {
+    log "INFO" "Building backend application"
+    
+    cd "$BACKEND_DIR"
+    npm run build
+    
+    if [[ $? -eq 0 ]]; then
+        log "SUCCESS" "Backend application built successfully"
+    else
+        log "ERROR" "Failed to build backend application"
+        return 1
+    fi
+}
+
 # Complete the backend installation
 complete_backend_setup() {
     log "INFO" "Completing backend setup"

@@ -366,7 +366,7 @@ import {
   DatabaseIcon,
   ShieldCheckIcon,
   BarChart3Icon,
-  UserGroupIcon
+  UsersIcon
 } from 'lucide-react'
 
 const navigation = [
@@ -376,7 +376,7 @@ const navigation = [
   { name: 'Databases', href: '/databases', icon: DatabaseIcon },
   { name: 'SSL Certificates', href: '/ssl', icon: ShieldCheckIcon },
   { name: 'Analytics', href: '/analytics', icon: BarChart3Icon },
-  { name: 'Users', href: '/users', icon: UserGroupIcon },
+  { name: 'Users', href: '/users', icon: UsersIcon },
   { name: 'Settings', href: '/settings', icon: CogIcon },
 ]
 
