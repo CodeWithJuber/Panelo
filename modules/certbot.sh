@@ -3,7 +3,60 @@
 # Certbot SSL Installation Module
 # Sets up Let's Encrypt SSL certificates with automatic renewal
 
-source "$(dirname "$0")/helper.sh" 2>/dev/null || true
+# Try to source helper.sh with better error handling
+SCRIPT_DIR="$(dirname "$0")"
+if [[ -f "$SCRIPT_DIR/helper.sh" ]]; then
+    source "$SCRIPT_DIR/helper.sh"
+elif [[ -f "/opt/server-panel/modules/helper.sh" ]]; then
+    source "/opt/server-panel/modules/helper.sh"
+else
+    # Fallback logging functions if helper.sh is not available
+    log() {
+        local level="$1"
+        local message="$2"
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$level] $message"
+    }
+    
+    create_directory() {
+        local dir="$1"
+        local owner="${2:-root}"
+        local group="${3:-root}"
+        local permissions="${4:-755}"
+        
+        mkdir -p "$dir"
+        chown "$owner:$group" "$dir" 2>/dev/null || true
+        chmod "$permissions" "$dir"
+    }
+    
+    validate_domain() {
+        local domain="$1"
+        [[ "$domain" =~ ^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$ ]]
+    }
+    
+    validate_email() {
+        local email="$1"
+        [[ "$email" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]
+    }
+    
+    get_system_info() {
+        local info_type="$1"
+        case "$info_type" in
+            "os")
+                if [[ -f /etc/os-release ]]; then
+                    source /etc/os-release
+                    echo "$ID"
+                else
+                    echo "unknown"
+                fi
+                ;;
+        esac
+    }
+    
+    test_ssl_cert() {
+        local domain="$1"
+        timeout 10 openssl s_client -connect "$domain:443" -servername "$domain" </dev/null >/dev/null 2>&1
+    }
+fi
 
 # SSL configuration
 CERTBOT_EMAIL=""
@@ -550,34 +603,64 @@ force_renewal() {
 
 # Main execution
 main() {
-    case "${1:-install}" in
+    local command="${1:-install}"
+    local domain="$2"
+    local email="$3"
+    
+    # Debug information
+    log "INFO" "Certbot script called with command: '$command', domain: '$domain', email: '$email'"
+    
+    case "$command" in
         "install")
-            install_certbot "$2" "$3"
+            if [[ -z "$domain" ]] || [[ -z "$email" ]]; then
+                log "ERROR" "Install command requires domain and email parameters"
+                echo "Usage: $0 install <domain> <email>"
+                exit 1
+            fi
+            install_certbot "$domain" "$email"
             ;;
         "add-domain")
-            add_ssl_domain "$2" "$3"
+            if [[ -z "$domain" ]]; then
+                log "ERROR" "Add-domain command requires domain parameter"
+                echo "Usage: $0 add-domain <domain> [email]"
+                exit 1
+            fi
+            add_ssl_domain "$domain" "$email"
             ;;
         "remove-domain")
-            remove_ssl_domain "$2"
+            if [[ -z "$domain" ]]; then
+                log "ERROR" "Remove-domain command requires domain parameter"
+                echo "Usage: $0 remove-domain <domain>"
+                exit 1
+            fi
+            remove_ssl_domain "$domain"
             ;;
         "list")
             list_ssl_certificates
             ;;
         "status")
-            get_ssl_status "$2"
+            get_ssl_status "$domain"
             ;;
         "renew")
             if [[ -f "$RENEWAL_SCRIPT" ]]; then
                 "$RENEWAL_SCRIPT" renew
             else
-                force_renewal "$2"
+                force_renewal "$domain"
             fi
             ;;
         "force-renew")
-            force_renewal "$2"
+            force_renewal "$domain"
             ;;
         *)
             echo "Usage: $0 [install|add-domain|remove-domain|list|status|renew|force-renew]"
+            echo "Commands:"
+            echo "  install <domain> <email>    - Install SSL certificate for domain"
+            echo "  add-domain <domain> [email] - Add SSL certificate for additional domain"
+            echo "  remove-domain <domain>      - Remove SSL certificate for domain"
+            echo "  list                        - List all SSL certificates"
+            echo "  status [domain]             - Show SSL certificate status"
+            echo "  renew [domain]              - Renew SSL certificates"
+            echo "  force-renew [domain]        - Force renewal of SSL certificates"
             exit 1
             ;;
     esac
