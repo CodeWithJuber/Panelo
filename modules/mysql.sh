@@ -32,11 +32,24 @@ install_mysql() {
     # Create MySQL configuration
     create_mysql_config
     
-    # Deploy MySQL container
-    deploy_mysql_container
-    
-    # Wait for MySQL to be ready
-    wait_for_mysql
+    # Try MySQL first, fallback to MariaDB if it fails
+    if ! deploy_mysql_container || ! wait_for_mysql; then
+        log "WARNING" "MySQL 8.0 failed to start, trying MariaDB as fallback"
+        
+        # Clean up failed MySQL container
+        docker stop "$MYSQL_CONTAINER_NAME" 2>/dev/null || true
+        docker rm "$MYSQL_CONTAINER_NAME" 2>/dev/null || true
+        rm -rf /var/server-panel/mysql/data/*
+        
+        # Try MariaDB instead
+        MYSQL_VERSION="mariadb:10.11"
+        if ! deploy_mysql_container || ! wait_for_mysql; then
+            log "ERROR" "Both MySQL and MariaDB failed to start"
+            return 1
+        fi
+        
+        log "SUCCESS" "MariaDB started successfully as MySQL alternative"
+    fi
     
     # Create databases and users
     setup_panel_database
@@ -76,8 +89,29 @@ setup_mysql_directories() {
 create_mysql_config() {
     log "INFO" "Creating MySQL configuration"
     
-    # Create custom MySQL configuration
-    cat > /var/server-panel/mysql/config/my.cnf << 'EOF'
+    # Check available memory and adjust settings accordingly
+    local available_mem
+    available_mem=$(free -m | awk 'NR==2{printf "%.0f", $7*0.7}')
+    
+    local innodb_buffer_size="128M"
+    local max_connections="100"
+    local thread_cache_size="64"
+    
+    if [[ $available_mem -gt 1024 ]]; then
+        innodb_buffer_size="256M"
+        max_connections="200"
+        thread_cache_size="128"
+    elif [[ $available_mem -gt 2048 ]]; then
+        innodb_buffer_size="512M"
+        max_connections="300"
+        thread_cache_size="256"
+    fi
+    
+    log "INFO" "Configuring MySQL for ${available_mem}MB available memory"
+    log "INFO" "Setting InnoDB buffer pool to $innodb_buffer_size"
+    
+    # Create optimized MySQL configuration for MySQL 8.0+
+    cat > /var/server-panel/mysql/config/my.cnf << EOF
 [mysqld]
 # Basic Settings
 user = mysql
@@ -88,15 +122,15 @@ pid-file = /var/run/mysqld/mysqld.pid
 # Connection Settings
 bind-address = 0.0.0.0
 port = 3306
-max_connections = 200
+max_connections = $max_connections
 connect_timeout = 60
 wait_timeout = 120
 max_allowed_packet = 64M
-thread_cache_size = 128
-sort_buffer_size = 4M
-bulk_insert_buffer_size = 16M
-tmp_table_size = 32M
-max_heap_table_size = 32M
+thread_cache_size = $thread_cache_size
+sort_buffer_size = 2M
+bulk_insert_buffer_size = 8M
+tmp_table_size = 16M
+max_heap_table_size = 16M
 
 # Logging
 log_error = /var/log/mysql/error.log
@@ -104,21 +138,29 @@ slow_query_log = 1
 slow_query_log_file = /var/log/mysql/slow.log
 long_query_time = 2
 
-# InnoDB Settings
-innodb_buffer_pool_size = 256M
-innodb_log_buffer_size = 2M
+# InnoDB Settings (MySQL 8.0 optimized)
+innodb_buffer_pool_size = $innodb_buffer_size
+innodb_log_buffer_size = 1M
 innodb_file_per_table = 1
-innodb_open_files = 400
-innodb_io_capacity = 400
+innodb_open_files = 300
+innodb_io_capacity = 200
 innodb_flush_method = O_DIRECT
+innodb_log_file_size = 48M
+innodb_flush_log_at_trx_commit = 2
 
 # Security
 local-infile = 0
 skip-symbolic-links
+skip-name-resolve
 
 # Character Set
 character-set-server = utf8mb4
 collation-server = utf8mb4_unicode_ci
+
+# MySQL 8.0 specific optimizations
+mysqlx = OFF
+skip-log-bin
+default-authentication-plugin = mysql_native_password
 
 [mysql]
 default-character-set = utf8mb4
@@ -127,7 +169,7 @@ default-character-set = utf8mb4
 default-character-set = utf8mb4
 EOF
     
-    log "SUCCESS" "MySQL configuration created"
+    log "SUCCESS" "MySQL configuration created with optimized settings"
 }
 
 deploy_mysql_container() {
@@ -137,7 +179,37 @@ deploy_mysql_container() {
     docker stop "$MYSQL_CONTAINER_NAME" 2>/dev/null || true
     docker rm "$MYSQL_CONTAINER_NAME" 2>/dev/null || true
     
-    # Create and start MySQL container
+    # Check if data directory is corrupted and clean if necessary
+    if [[ -d "/var/server-panel/mysql/data" ]]; then
+        local file_count
+        file_count=$(find /var/server-panel/mysql/data -type f | wc -l)
+        
+        # If data directory has files but no mysql directory, it's corrupted
+        if [[ $file_count -gt 0 ]] && [[ ! -d "/var/server-panel/mysql/data/mysql" ]]; then
+            log "WARNING" "Detected corrupted MySQL data directory, cleaning..."
+            rm -rf /var/server-panel/mysql/data/*
+            log "SUCCESS" "Cleaned corrupted data directory"
+        fi
+    fi
+    
+    # Ensure proper permissions
+    chown -R 999:999 /var/server-panel/mysql/data /var/server-panel/mysql/logs
+    chmod -R 755 /var/server-panel/mysql/data /var/server-panel/mysql/logs
+    
+    # Determine if we're using MySQL or MariaDB
+    local db_image="mysql:$MYSQL_VERSION"
+    local extra_args=""
+    
+    if [[ "$MYSQL_VERSION" == mariadb:* ]]; then
+        db_image="$MYSQL_VERSION"
+        extra_args="--character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci"
+    else
+        extra_args="--character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --skip-mysqlx --disable-log-bin"
+    fi
+    
+    log "INFO" "Starting database container: $db_image"
+    
+    # Create and start MySQL/MariaDB container
     docker run -d \
         --name "$MYSQL_CONTAINER_NAME" \
         --network server-panel \
@@ -151,11 +223,8 @@ deploy_mysql_container() {
         -v /var/server-panel/mysql/logs:/var/log/mysql \
         --restart unless-stopped \
         --security-opt apparmor:unconfined \
-        mysql:"$MYSQL_VERSION" \
-        --character-set-server=utf8mb4 \
-        --collation-server=utf8mb4_unicode_ci \
-        --skip-mysqlx \
-        --disable-log-bin
+        $db_image \
+        $extra_args
     
     if [[ $? -eq 0 ]]; then
         log "SUCCESS" "MySQL container deployed successfully"
@@ -168,21 +237,44 @@ deploy_mysql_container() {
 wait_for_mysql() {
     log "INFO" "Waiting for MySQL to be ready"
     
-    local max_attempts=30
+    local max_attempts=60
     local attempt=1
+    local container_status
     
     while [[ $attempt -le $max_attempts ]]; do
-        if docker exec "$MYSQL_CONTAINER_NAME" mysqladmin ping -h localhost --silent; then
-            log "SUCCESS" "MySQL is ready"
-            return 0
+        # Check if container is still running
+        container_status=$(docker inspect --format='{{.State.Status}}' "$MYSQL_CONTAINER_NAME" 2>/dev/null || echo "not_found")
+        
+        if [[ "$container_status" == "exited" ]]; then
+            log "ERROR" "MySQL container exited unexpectedly"
+            log "INFO" "Container logs:"
+            docker logs --tail 20 "$MYSQL_CONTAINER_NAME"
+            return 1
+        elif [[ "$container_status" == "restarting" ]]; then
+            if [[ $((attempt % 10)) -eq 0 ]]; then
+                log "WARNING" "MySQL container is restarting (attempt $attempt/$max_attempts)"
+                log "INFO" "Recent logs:"
+                docker logs --tail 5 "$MYSQL_CONTAINER_NAME" 2>/dev/null || true
+            fi
+        elif [[ "$container_status" == "running" ]]; then
+            # Container is running, check if MySQL is responding
+            if docker exec "$MYSQL_CONTAINER_NAME" mysqladmin ping -h localhost --silent 2>/dev/null; then
+                log "SUCCESS" "MySQL is ready and responding"
+                return 0
+            fi
         fi
         
-        log "INFO" "Waiting for MySQL to start (attempt $attempt/$max_attempts)"
+        if [[ $((attempt % 15)) -eq 0 ]]; then
+            log "INFO" "Still waiting for MySQL... (attempt $attempt/$max_attempts, status: $container_status)"
+        fi
+        
         sleep 2
         ((attempt++))
     done
     
     log "ERROR" "MySQL failed to start after $max_attempts attempts"
+    log "INFO" "Final container status: $container_status"
+    log "INFO" "Use 'docker logs $MYSQL_CONTAINER_NAME' to check error details"
     return 1
 }
 
