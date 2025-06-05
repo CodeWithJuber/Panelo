@@ -98,11 +98,6 @@ bulk_insert_buffer_size = 16M
 tmp_table_size = 32M
 max_heap_table_size = 32M
 
-# Query Cache
-query_cache_limit = 128K
-query_cache_size = 64M
-query_cache_type = 1
-
 # Logging
 log_error = /var/log/mysql/error.log
 slow_query_log = 1
@@ -110,7 +105,6 @@ slow_query_log_file = /var/log/mysql/slow.log
 long_query_time = 2
 
 # InnoDB Settings
-default_table_type = InnoDB
 innodb_buffer_pool_size = 256M
 innodb_log_buffer_size = 2M
 innodb_file_per_table = 1
@@ -153,12 +147,15 @@ deploy_mysql_container() {
         -e MYSQL_USER="$MYSQL_PANEL_USER" \
         -e MYSQL_PASSWORD="$MYSQL_PANEL_PASSWORD" \
         -v /var/server-panel/mysql/data:/var/lib/mysql \
-        -v /var/server-panel/mysql/config/my.cnf:/etc/mysql/conf.d/custom.cnf \
+        -v /var/server-panel/mysql/config/my.cnf:/etc/mysql/conf.d/custom.cnf:ro \
         -v /var/server-panel/mysql/logs:/var/log/mysql \
         --restart unless-stopped \
+        --security-opt apparmor:unconfined \
         mysql:"$MYSQL_VERSION" \
         --character-set-server=utf8mb4 \
-        --collation-server=utf8mb4_unicode_ci
+        --collation-server=utf8mb4_unicode_ci \
+        --skip-mysqlx \
+        --disable-log-bin
     
     if [[ $? -eq 0 ]]; then
         log "SUCCESS" "MySQL container deployed successfully"
