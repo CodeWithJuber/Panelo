@@ -42,9 +42,40 @@ check_root() {
 detect_server_info() {
     echo -e "${BLUE}Auto-detecting server configuration...${NC}"
     
-    # Get server's public IP
+    # Get server's public IPv4 (preferred)
+    local ipv4_ip
+    ipv4_ip=$(curl -4 -s ifconfig.me 2>/dev/null || curl -4 -s ipinfo.io/ip 2>/dev/null || curl -4 -s icanhazip.com 2>/dev/null)
+    
+    # Get server's public IPv6 (fallback)
+    local ipv6_ip
+    ipv6_ip=$(curl -6 -s ifconfig.me 2>/dev/null || curl -6 -s ipinfo.io/ip 2>/dev/null || curl -6 -s icanhazip.com 2>/dev/null)
+    
+    # Get local IP as ultimate fallback
+    local local_ip
+    local_ip=$(ip route get 8.8.8.8 2>/dev/null | awk '{print $7; exit}' || hostname -I | awk '{print $1}' || echo "127.0.0.1")
+    
+    # Prefer IPv4, then local IP, then IPv6
     local public_ip
-    public_ip=$(curl -s ifconfig.me 2>/dev/null || curl -s ipinfo.io/ip 2>/dev/null || curl -s icanhazip.com 2>/dev/null || echo "127.0.0.1")
+    if [[ -n "$ipv4_ip" && "$ipv4_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        public_ip="$ipv4_ip"
+        echo -e "${GREEN}✓ IPv4 Address: $ipv4_ip${NC}"
+    elif [[ -n "$local_ip" && "$local_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        public_ip="$local_ip"
+        echo -e "${GREEN}✓ Local IPv4 Address: $local_ip${NC}"
+    elif [[ -n "$ipv6_ip" ]]; then
+        public_ip="$ipv6_ip"
+        echo -e "${GREEN}✓ IPv6 Address: $ipv6_ip${NC}"
+    else
+        public_ip="127.0.0.1"
+        echo -e "${YELLOW}⚠ Using localhost as fallback${NC}"
+    fi
+    
+    # Show all available addresses
+    if [[ -n "$ipv4_ip" && -n "$ipv6_ip" ]]; then
+        echo -e "${BLUE}📍 Available Access Points:${NC}"
+        echo -e "   • IPv4: https://$ipv4_ip:3000"
+        echo -e "   • IPv6: https://[$ipv6_ip]:3000"
+    fi
     
     # Get hostname
     local hostname
@@ -56,10 +87,9 @@ detect_server_info() {
     # Set default email for SSL (not needed for IP addresses but required for parameter)
     EMAIL="admin@${hostname}"
     
-    echo -e "${GREEN}✓ Server IP: $public_ip${NC}"
     echo -e "${GREEN}✓ Hostname: $hostname${NC}"
     echo -e "${GREEN}✓ Default email: $EMAIL${NC}"
-    echo -e "${GREEN}✓ Panel will be accessible at: https://$DOMAIN:3000${NC}"
+    echo -e "${GREEN}✓ Primary Panel URL: https://$DOMAIN:3000${NC}"
 }
 
 # Check OS compatibility
