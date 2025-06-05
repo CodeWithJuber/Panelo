@@ -1,4 +1,4 @@
-# Server Panel - Complete cPanel Alternative
+# Panelo - Complete cPanel Alternative
 
 A complete server management panel that provides cPanel-like functionality with modern Docker-based architecture. This system supports WordPress, static sites, PHP, Node.js, Python applications with per-user isolation, file management, SSL certificates, and database management.
 
@@ -15,15 +15,16 @@ A complete server management panel that provides cPanel-like functionality with 
 ### Application Support
 - **WordPress** - One-click WordPress deployments
 - **Static websites** - HTML/CSS/JS hosting
-- **PHP applications** - Full PHP support with Apache/NGINX
-- **Node.js applications** - Express, Next.js, and other Node frameworks
+- **PHP applications** - Full PHP support with Apache/NGINX (Laravel, CodeIgniter)
+- **Node.js applications** - Express, Next.js, NestJS support
 - **Python applications** - Flask, Django, and other Python frameworks
 - **Custom applications** - Support for custom Dockerfiles
 
 ### Management Features
 - **Modern web interface** - Built with Next.js and Tailwind CSS
-- **RESTful API** - NestJS-based backend API
-- **Real-time monitoring** - CPU, memory, and disk usage tracking
+- **RESTful API** - Complete NestJS-based backend API
+- **Real-time monitoring** - Prometheus + Grafana with custom metrics
+- **System monitoring** - CPU, memory, disk usage tracking with alerts
 - **Automatic backups** - Database and file backups with scheduling
 - **Security** - Fail2ban, firewall management, and security headers
 - **DNS management** - Optional Cloudflare integration
@@ -47,9 +48,9 @@ A complete server management panel that provides cPanel-like functionality with 
 ### 1. Download and Run Installer
 
 ```bash
-# Download the server panel
-git clone https://github.com/your-repo/server-panel.git
-cd server-panel
+# Download Panelo
+git clone https://github.com/CodeWithJuber/Panelo.git
+cd Panelo
 
 # Make installer executable
 chmod +x install.sh
@@ -65,47 +66,80 @@ The installer will guide you through:
 1. **Component Selection** - Choose which services to install
 2. **Web Server** - Select NGINX (recommended) or Apache
 3. **Database** - Choose MySQL (recommended) or PostgreSQL
-4. **Applications** - Select supported application types
+4. **Applications** - Select supported application types (PHP, Node.js, Python, WordPress)
 5. **Domain Configuration** - Enter your domain and email
 6. **SSL Setup** - Automatic Let's Encrypt certificate generation
+7. **Monitoring** - Prometheus + Grafana stack (optional)
+8. **Backup System** - Automated backup configuration (optional)
 
 ### 3. Post-Installation
 
 After installation completes:
 
 1. **Access the panel** at `https://your-domain.com:3000`
-2. **Login credentials** are saved in `/var/server-panel/admin-credentials.txt`
-3. **File manager** is available at `https://your-domain.com:8080`
+2. **Backend API** at `https://your-domain.com:3001`
+3. **Login credentials** are saved in `/var/server-panel/admin-credentials.txt`
+4. **File manager** is available at `https://your-domain.com:8080`
+5. **Grafana monitoring** at `https://your-domain.com:3001` (admin/admin123)
+6. **Prometheus** at `https://your-domain.com:9090`
 
-## 🛠️ Manual Installation Options
+## 🛠️ Application Deployment
 
-### Custom Installation
+### Deploy WordPress
 
 ```bash
-# Install specific components only
-./install.sh
+# Command line deployment
+./modules/wordpress.sh deploy mysite example.com admin@email.com
 
-# Then select components in the interactive menu
+# Or via web interface:
+# 1. Go to Applications → New Application
+# 2. Select WordPress
+# 3. Enter domain and configuration
+# 4. Click Deploy
 ```
 
-### Component-Specific Installation
+### Deploy PHP/Laravel Application
 
 ```bash
-# Install only Docker and NGINX
-./modules/docker.sh install
-./modules/nginx.sh install
+# Deploy Laravel application
+./modules/php.sh deploy myapp example.com laravel 8.2 user123
 
-# Install only WordPress support
-./modules/wordpress.sh install
+# Deploy basic PHP application
+./modules/php.sh deploy myapp example.com basic 8.2 user123
 
-# Install SSL support
-./modules/certbot.sh install yourdomain.com admin@yourdomain.com
+# Supported PHP versions: 7.4, 8.0, 8.1, 8.2, 8.3
+# Supported frameworks: basic, laravel, symfony, codeigniter
+```
+
+### Deploy Node.js Application
+
+```bash
+# Deploy Express.js application
+./modules/nodejs.sh deploy myapi api.example.com express 18 user123
+
+# Deploy Next.js application
+./modules/nodejs.sh deploy myapp app.example.com nextjs 18 user123
+
+# Supported Node.js versions: 16, 18, 20, 21
+# Supported frameworks: express, nextjs, nestjs, react
+```
+
+### Deploy Python Application
+
+```bash
+# Deploy Flask application
+./modules/python.sh deploy myapp app.example.com flask 3.9 user123
+
+# Deploy Django application (when implemented)
+./modules/python.sh deploy myapp app.example.com django 3.9 user123
+
+# Supported Python versions: 3.8, 3.9, 3.10, 3.11
 ```
 
 ## 📁 Project Structure
 
 ```
-server-panel/
+Panelo/
 ├── install.sh                 # Main installer script
 ├── modules/                   # Installation modules
 │   ├── helper.sh              # Common helper functions
@@ -115,222 +149,172 @@ server-panel/
 │   ├── filemanager.sh         # FileBrowser setup
 │   ├── certbot.sh             # SSL certificate management
 │   ├── wordpress.sh           # WordPress deployment support
-│   └── panel-frontend.sh      # Panel web interface
+│   ├── php.sh                 # PHP application deployment
+│   ├── nodejs.sh              # Node.js application deployment
+│   ├── python.sh              # Python application deployment
+│   ├── monitoring.sh          # Prometheus + Grafana stack
+│   ├── panel-frontend.sh      # Next.js frontend setup
+│   └── panel-backend.sh       # NestJS backend API
 ├── templates/                 # Configuration templates
-│   ├── nginx-vhost.conf       # NGINX virtual host template
-│   ├── apache-vhost.conf      # Apache virtual host template
-│   └── docker-compose.base.yml
-└── panel/                     # Web panel source code
-    ├── frontend/              # Next.js frontend
-    └── backend/               # NestJS backend
+└── README.md                  # This file
 ```
 
-## 🌐 Web Interface
+## 🌐 Web Interface Features
 
 ### Dashboard
-- System resource monitoring (CPU, Memory, Disk)
+- Real-time system resource monitoring (CPU, Memory, Disk)
+- Application status overview
 - Quick stats (Applications, Databases, SSL certificates)
 - Quick action buttons for common tasks
 
 ### Applications Management
-- Deploy new applications (WordPress, Static, PHP, Node.js, Python)
+- Deploy new applications with one-click
+- Support for WordPress, PHP/Laravel, Node.js/Express/Next.js, Python/Flask
 - Start/stop/restart applications
-- View application logs
-- Manage application settings
+- View real-time application logs
+- Resource usage monitoring per application
+- SSL certificate management per domain
 
 ### File Manager
-- Web-based file browser
-- File upload/download
-- Online file editing
-- Directory management
-- File permissions management
+- Web-based file browser with full functionality
+- File upload/download with drag-and-drop
+- Online file editing with syntax highlighting
+- Directory management and permissions
+- User-isolated file access
 
-### SSL Management
-- View all SSL certificates
-- Request new certificates
-- Automatic renewal monitoring
-- Certificate status checking
+### User Management
+- Create and manage user accounts
+- Role-based access control (Admin/User)
+- Set resource limits per user
+- Suspend/activate user accounts
+- Usage monitoring and quotas
 
-## 📖 Usage Examples
+### Monitoring & Analytics
+- Grafana dashboards for system metrics
+- Application performance monitoring
+- SSL certificate expiry tracking
+- Automated alerting via email/webhooks
+- Custom metrics for applications
 
-### Deploy a WordPress Site
+## 🔧 API Documentation
 
+### Authentication
 ```bash
-# Via command line
-./modules/wordpress.sh deploy mysite example.com user@email.com
-
-# Via web interface
-1. Go to Applications → New Application
-2. Select WordPress
-3. Enter domain and configuration
-4. Click Deploy
+# Login to get JWT token
+curl -X POST https://your-domain.com:3001/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@example.com","password":"your-password"}'
 ```
 
-### Create SSL Certificate
-
+### Application Management
 ```bash
-# Via command line
-./modules/certbot.sh add-domain newdomain.com admin@email.com
+# Get all applications
+curl -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  https://your-domain.com:3001/api/apps
 
-# Automatic via web interface when deploying applications
+# Deploy new application
+curl -X POST https://your-domain.com:3001/api/apps \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"myapp","domain":"app.example.com","type":"wordpress"}'
 ```
 
-### Manage Files
-
-1. Access file manager at `https://your-domain.com:8080`
-2. Login with panel credentials
-3. Navigate, upload, edit files through web interface
-
-### Database Management
-
+### User Management
 ```bash
-# Create database for application
-./modules/mysql.sh create-db myapp db_user db_password
+# Get all users (admin only)
+curl -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  https://your-domain.com:3001/api/users
 
-# Backup database
-./modules/mysql.sh backup myapp
-
-# View database status
-./modules/mysql.sh status
+# Create new user (admin only)
+curl -X POST https://your-domain.com:3001/api/users \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"user@example.com","name":"John Doe","password":"securepass"}'
 ```
 
-## 🔧 Configuration
+## 🛡️ Security Features
 
-### Environment Variables
+- **Container Isolation** - Each application runs in isolated Docker containers
+- **SSL/TLS Encryption** - Automatic Let's Encrypt certificates with auto-renewal
+- **Firewall Configuration** - UFW/Firewalld with minimal open ports
+- **Fail2ban Protection** - Automatic IP blocking for brute force attempts
+- **Security Headers** - NGINX/Apache configured with security headers
+- **JWT Authentication** - Secure API access with JSON Web Tokens
+- **Role-based Access** - Admin and user roles with different permissions
+- **Input Validation** - All API inputs validated and sanitized
 
-Key configuration files:
-- `/var/server-panel/` - Main data directory
-- `/opt/server-panel/` - Installation directory
-- `/etc/nginx/sites-available/` - NGINX configurations
-- `/etc/letsencrypt/` - SSL certificates
+## 📊 Monitoring & Alerting
 
-### Service Management
+### Metrics Collected
+- System resources (CPU, Memory, Disk, Network)
+- Application performance (response times, error rates)
+- Container resource usage
+- SSL certificate expiry dates
+- Database performance and connections
+- Backup status and history
 
-```bash
-# Panel services
-systemctl start server-panel
-systemctl stop server-panel
-systemctl restart server-panel
-
-# Individual components
-systemctl restart nginx
-systemctl restart mysql
-docker restart server-panel-filemanager
-```
-
-## 🚨 Security Features
-
-- **Firewall configuration** - Automatic UFW/firewalld setup
-- **Fail2ban protection** - SSH brute force protection
-- **SSL enforcement** - Automatic HTTPS redirects
-- **Container isolation** - Each app runs in isolated containers
-- **Security headers** - NGINX security headers enabled
-- **File permissions** - Proper file system permissions
-
-## 📊 Monitoring & Maintenance
-
-### Automatic Tasks
-- **SSL renewal** - Certificates renew automatically
-- **Database backups** - Daily automatic backups
-- **Log rotation** - Automatic log management
-- **Security updates** - Container image updates
-
-### Manual Monitoring
-
-```bash
-# View panel logs
-journalctl -u server-panel -f
-
-# Check SSL certificate status
-./modules/certbot.sh status
-
-# View system resources
-htop
-df -h
-```
+### Alerting Rules
+- High CPU usage (>80% for 5 minutes)
+- High memory usage (>85% for 5 minutes)
+- Low disk space (<10% available)
+- Application downtime
+- SSL certificate expiry (30 days warning)
+- Failed backup notifications
 
 ## 🔄 Backup & Recovery
 
-### Automatic Backups
-- Database backups stored in `/var/server-panel/mysql/backups/`
-- Application backups in `/var/server-panel/backups/`
-- SSL certificates backed up before renewal
+### Automated Backups
+- **Database backups** - Daily MySQL dumps with compression
+- **Application backups** - File system backups for user data
+- **Configuration backups** - NGINX, SSL, and application configs
+- **Retention policy** - Configurable backup retention (default: 30 days)
 
-### Manual Backup
-
+### Manual Backup Commands
 ```bash
 # Backup specific application
-./modules/wordpress.sh manage backup mysite
+./modules/backup.sh app myapp-name
 
 # Backup all databases
-./modules/mysql.sh backup all
+./modules/backup.sh database all
+
+# Backup system configuration
+./modules/backup.sh config
 ```
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-**Installation fails**
-```bash
-# Check system requirements
-free -h
-df -h
-# Ensure running as root
-sudo -i
-```
-
-**Can't access panel**
-```bash
-# Check if services are running
-systemctl status server-panel
-docker ps
-
-# Check firewall
-ufw status
-```
-
-**SSL certificate issues**
-```bash
-# Check DNS resolution
-nslookup your-domain.com
-
-# Manual certificate request
-./modules/certbot.sh add-domain your-domain.com your@email.com
-```
-
-### Log Locations
-- Panel logs: `/var/log/server-panel/`
-- NGINX logs: `/var/log/nginx/`
-- SSL renewal logs: `/var/log/server-panel/ssl-renewal.log`
 
 ## 🤝 Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
+We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
 
-## 📄 License
+### Development Setup
+```bash
+git clone https://github.com/CodeWithJuber/Panelo.git
+cd Panelo
+./install.sh  # For full installation
+# Or install components individually for development
+```
+
+## 📝 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🆘 Support
+## 🎯 Roadmap
 
-- **Documentation**: Check this README and inline comments
-- **Issues**: Report bugs on GitHub Issues
-- **Community**: Join our Discord/Slack community
+- [ ] **Email Hosting** - Mailcow integration
+- [ ] **DNS Management** - PowerDNS integration
+- [ ] **Load Balancing** - Multi-server deployments
+- [ ] **CDN Integration** - CloudFlare/AWS CloudFront
+- [ ] **Advanced Monitoring** - Custom dashboards
+- [ ] **Plugin System** - Third-party integrations
+- [ ] **Mobile App** - iOS/Android management app
+- [ ] **Multi-language Support** - i18n implementation
 
-## 🔮 Roadmap
+## ⭐ Support
 
-### Upcoming Features
-- **Kubernetes support** - Deploy to K8s clusters
-- **Multi-server management** - Manage multiple servers
-- **Advanced monitoring** - Prometheus/Grafana integration
-- **CI/CD integration** - Git-based deployments
-- **Billing integration** - WHMCS/Stripe integration
-- **More applications** - Ruby, Go, Rust support
+If you find Panelo helpful, please give it a star on GitHub! 
 
----
+For support and questions:
+- 📧 Email: support@panelo.dev
+- 💬 Discord: [Join our community](https://discord.gg/panelo)
+- 🐛 Issues: [GitHub Issues](https://github.com/CodeWithJuber/Panelo/issues)
 
-**Made with ❤️ for the open-source community** 
+**Made with ❤️ for the open-source community**
