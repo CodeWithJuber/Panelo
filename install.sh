@@ -235,7 +235,7 @@ install_components() {
 # Install panel frontend and backend
 install_panel() {
     echo -e "${GREEN}Installing Server Panel Frontend and Backend...${NC}"
-    bash "$INSTALL_DIR/modules/panel-frontend.sh" "$DOMAIN"
+    bash "$INSTALL_DIR/modules/panel-frontend.sh" install "$DOMAIN"
     bash "$INSTALL_DIR/modules/panel-backend.sh" "$DATABASE"
 }
 
