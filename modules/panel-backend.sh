@@ -27,6 +27,7 @@ install_backend() {
     create_app_management
     create_monitoring_system
     create_dns_management
+    create_files_management
     create_docker_config
     setup_database_schema
     install_dependencies
@@ -133,6 +134,7 @@ create_package_files() {
     "@nestjs/schedule": "^3.0.1",
     "@nestjs/websockets": "^10.0.0",
     "@nestjs/platform-socket.io": "^10.0.0",
+    "@nestjs/swagger": "^7.1.0",
     "typeorm": "^0.3.17",
     "mysql2": "^3.6.0",
     "bcryptjs": "^2.4.3",
@@ -1728,6 +1730,242 @@ networks:
 }
 EOF
 
+    # Create apps controller
+    cat > "$BACKEND_DIR/src/apps/apps.controller.ts" << 'EOF'
+import { Controller, Get, Post, Put, Delete, Body, Param, Query } from '@nestjs/common';
+import { AppsService } from './apps.service';
+import { App, AppType } from './app.entity';
+
+@Controller('apps')
+export class AppsController {
+  constructor(private readonly appsService: AppsService) {}
+
+  @Get()
+  async getAllApps(@Query('userId') userId?: string): Promise<App[]> {
+    if (userId) {
+      return this.appsService.getAppsByUser(userId);
+    }
+    return this.appsService.getAllApps();
+  }
+
+  @Get(':id')
+  async getApp(@Param('id') id: string): Promise<App> {
+    return this.appsService.getAppById(id);
+  }
+
+  @Post()
+  async createApp(@Body() appData: {
+    name: string;
+    domain: string;
+    type: AppType;
+    userId: string;
+    config?: any;
+  }): Promise<App> {
+    return this.appsService.createApp(appData);
+  }
+
+  @Put(':id')
+  async updateApp(@Param('id') id: string, @Body() updateData: Partial<App>): Promise<App> {
+    return this.appsService.updateApp(id, updateData);
+  }
+
+  @Delete(':id')
+  async deleteApp(@Param('id') id: string): Promise<void> {
+    return this.appsService.deleteApp(id);
+  }
+
+  @Post(':id/start')
+  async startApp(@Param('id') id: string): Promise<void> {
+    return this.appsService.startApp(id);
+  }
+
+  @Post(':id/stop')
+  async stopApp(@Param('id') id: string): Promise<void> {
+    return this.appsService.stopApp(id);
+  }
+
+  @Post(':id/restart')
+  async restartApp(@Param('id') id: string): Promise<void> {
+    return this.appsService.restartApp(id);
+  }
+
+  @Get(':id/logs')
+  async getAppLogs(@Param('id') id: string, @Query('lines') lines?: number): Promise<string> {
+    return this.appsService.getAppLogs(id, lines);
+  }
+}
+EOF
+
+    # Create apps service
+    cat > "$BACKEND_DIR/src/apps/apps.service.ts" << 'EOF'
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { App, AppType, AppStatus } from './app.entity';
+import { DockerService } from './docker.service';
+
+@Injectable()
+export class AppsService {
+  constructor(
+    @InjectRepository(App)
+    private appsRepository: Repository<App>,
+    private dockerService: DockerService,
+  ) {}
+
+  async getAllApps(): Promise<App[]> {
+    return this.appsRepository.find({ relations: ['user'] });
+  }
+
+  async getAppsByUser(userId: string): Promise<App[]> {
+    return this.appsRepository.find({ 
+      where: { userId },
+      relations: ['user'] 
+    });
+  }
+
+  async getAppById(id: string): Promise<App> {
+    const app = await this.appsRepository.findOne({ 
+      where: { id },
+      relations: ['user'] 
+    });
+    if (!app) {
+      throw new NotFoundException(\`App with ID \${id} not found\`);
+    }
+    return app;
+  }
+
+  async createApp(appData: {
+    name: string;
+    domain: string;
+    type: AppType;
+    userId: string;
+    config?: any;
+  }): Promise<App> {
+    const app = this.appsRepository.create({
+      ...appData,
+      status: AppStatus.BUILDING,
+    });
+
+    const savedApp = await this.appsRepository.save(app);
+
+    // Deploy the app based on type
+    try {
+      let containerId: string;
+      
+      switch (appData.type) {
+        case AppType.WORDPRESS:
+          containerId = await this.dockerService.createWordPressApp(
+            appData.name,
+            appData.domain,
+            appData.config?.database || {},
+            appData.userId
+          );
+          break;
+        case AppType.PHP:
+          containerId = await this.dockerService.createPHPApp(
+            appData.name,
+            appData.domain,
+            appData.config?.phpVersion || '8.1',
+            appData.userId
+          );
+          break;
+        case AppType.NODEJS:
+          containerId = await this.dockerService.createNodeJSApp(
+            appData.name,
+            appData.domain,
+            appData.config?.nodeVersion || '18',
+            appData.userId
+          );
+          break;
+        case AppType.PYTHON:
+          containerId = await this.dockerService.createPythonApp(
+            appData.name,
+            appData.domain,
+            appData.config?.pythonVersion || '3.11',
+            appData.userId
+          );
+          break;
+        default:
+          throw new Error(\`Unsupported app type: \${appData.type}\`);
+      }
+
+      // Update app with container ID and running status
+      savedApp.containerId = containerId;
+      savedApp.status = AppStatus.RUNNING;
+      savedApp.lastDeployedAt = new Date();
+      
+      return this.appsRepository.save(savedApp);
+    } catch (error) {
+      // Update app status to error
+      savedApp.status = AppStatus.ERROR;
+      await this.appsRepository.save(savedApp);
+      throw error;
+    }
+  }
+
+  async updateApp(id: string, updateData: Partial<App>): Promise<App> {
+    await this.appsRepository.update(id, updateData);
+    return this.getAppById(id);
+  }
+
+  async deleteApp(id: string): Promise<void> {
+    const app = await this.getAppById(id);
+    
+    if (app.containerId) {
+      await this.dockerService.removeContainer(app.containerId);
+    }
+    
+    await this.appsRepository.delete(id);
+  }
+
+  async startApp(id: string): Promise<void> {
+    const app = await this.getAppById(id);
+    
+    if (app.containerId) {
+      const started = await this.dockerService.startContainer(app.containerId);
+      if (started) {
+        app.status = AppStatus.RUNNING;
+        await this.appsRepository.save(app);
+      }
+    }
+  }
+
+  async stopApp(id: string): Promise<void> {
+    const app = await this.getAppById(id);
+    
+    if (app.containerId) {
+      const stopped = await this.dockerService.stopContainer(app.containerId);
+      if (stopped) {
+        app.status = AppStatus.STOPPED;
+        await this.appsRepository.save(app);
+      }
+    }
+  }
+
+  async restartApp(id: string): Promise<void> {
+    const app = await this.getAppById(id);
+    
+    if (app.containerId) {
+      const restarted = await this.dockerService.restartContainer(app.containerId);
+      if (restarted) {
+        app.status = AppStatus.RUNNING;
+        await this.appsRepository.save(app);
+      }
+    }
+  }
+
+  async getAppLogs(id: string, lines: number = 100): Promise<string> {
+    const app = await this.getAppById(id);
+    
+    if (app.containerId) {
+      return this.dockerService.getContainerLogs(app.containerId, lines);
+    }
+    
+    return 'No logs available';
+  }
+}
+EOF
+
     log "SUCCESS" "Application management system created"
 }
 
@@ -1861,6 +2099,104 @@ export class DnsService {
 EOF
 
     log "SUCCESS" "DNS management system created"
+}
+
+# Create files management system
+create_files_management() {
+    log "INFO" "Creating files management system"
+    
+    # Create files module
+    cat > "$BACKEND_DIR/src/files/files.module.ts" << 'EOF'
+import { Module } from '@nestjs/common';
+import { FilesController } from './files.controller';
+import { FilesService } from './files.service';
+
+@Module({
+  controllers: [FilesController],
+  providers: [FilesService],
+  exports: [FilesService]
+})
+export class FilesModule {}
+EOF
+
+    # Create files controller
+    cat > "$BACKEND_DIR/src/files/files.controller.ts" << 'EOF'
+import { Controller, Get, Post, Delete, Param, Body, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { FilesService } from './files.service';
+
+@Controller('files')
+export class FilesController {
+  constructor(private readonly filesService: FilesService) {}
+
+  @Get('list/:path*')
+  async listFiles(@Param('path') path: string) {
+    return this.filesService.listFiles(path);
+  }
+
+  @Post('upload')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadFile(@UploadedFile() file: Express.Multer.File, @Body('path') path: string) {
+    return this.filesService.uploadFile(file, path);
+  }
+
+  @Delete(':path*')
+  async deleteFile(@Param('path') path: string) {
+    return this.filesService.deleteFile(path);
+  }
+}
+EOF
+
+    # Create files service
+    cat > "$BACKEND_DIR/src/files/files.service.ts" << 'EOF'
+import { Injectable } from '@nestjs/common';
+import * as fs from 'fs';
+import * as path from 'path';
+
+@Injectable()
+export class FilesService {
+  private readonly basePath = '/var/server-panel';
+
+  async listFiles(dirPath: string = '') {
+    const fullPath = path.join(this.basePath, dirPath);
+    
+    try {
+      const items = await fs.promises.readdir(fullPath, { withFileTypes: true });
+      return items.map(item => ({
+        name: item.name,
+        type: item.isDirectory() ? 'directory' : 'file',
+        path: path.join(dirPath, item.name)
+      }));
+    } catch (error) {
+      throw new Error(`Failed to list files: ${error.message}`);
+    }
+  }
+
+  async uploadFile(file: Express.Multer.File, targetPath: string) {
+    const fullPath = path.join(this.basePath, targetPath, file.originalname);
+    
+    try {
+      await fs.promises.writeFile(fullPath, file.buffer);
+      return { success: true, path: fullPath };
+    } catch (error) {
+      throw new Error(`Failed to upload file: ${error.message}`);
+    }
+  }
+
+  async deleteFile(filePath: string) {
+    const fullPath = path.join(this.basePath, filePath);
+    
+    try {
+      await fs.promises.unlink(fullPath);
+      return { success: true };
+    } catch (error) {
+      throw new Error(`Failed to delete file: ${error.message}`);
+    }
+  }
+}
+EOF
+
+    log "SUCCESS" "Files management system created"
 }
 
 # Create Docker configuration
