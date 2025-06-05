@@ -442,17 +442,17 @@ deploy_wordpress() {
         fi
         
         # Save application configuration
-        cat > "$APP_DIR/app.conf" << EOF
-APP_NAME="$APP_NAME"
-DOMAIN="$DOMAIN"
-APP_PORT="$APP_PORT"
+        cat > "\$APP_DIR/app.conf" << 'EOFCONF'
+APP_NAME="\$APP_NAME"
+DOMAIN="\$DOMAIN"
+APP_PORT="\$APP_PORT"
 APP_TYPE="wordpress"
-USER_EMAIL="$USER_EMAIL"
-DB_NAME="$DB_NAME"
-DB_USER="$DB_USER"
-DB_HOST="$DB_HOST"
-CREATED_AT="$(date)"
-EOF
+USER_EMAIL="\$USER_EMAIL"
+DB_NAME="\$DB_NAME"
+DB_USER="\$DB_USER"
+DB_HOST="\$DB_HOST"
+CREATED_AT="\$(date)"
+EOFCONF
         
         log "SUCCESS" "WordPress deployed successfully"
         log "INFO" "Access your WordPress site at: https://$DOMAIN"
