@@ -1024,12 +1024,9 @@ EOF
 setup_composer_support() {
     log "INFO" "Setting up Composer support"
     
-    # Ensure Composer is available
-    if ! command -v composer &> /dev/null; then
-        curl -sS https://getcomposer.org/installer | php
-        mv composer.phar /usr/local/bin/composer
-        chmod +x /usr/local/bin/composer
-    fi
+    # Skip Composer installation on host - it will be available in PHP containers
+    # Composer is installed in each PHP Docker container via the Dockerfile
+    log "SUCCESS" "Composer will be available in PHP application containers"
 }
 
 # Main function
