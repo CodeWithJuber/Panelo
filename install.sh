@@ -3,6 +3,13 @@
 # Server Panel Installer
 # Complete cPanel-like server management system
 # Supports Docker-based isolation, multiple webservers, databases, and applications
+#
+# Usage:
+#   Auto-install everything:      sudo ./install.sh
+#   Auto-install with domain:     sudo ./install.sh mydomain.com admin@mydomain.com
+#   Interactive install:          sudo AUTO_INSTALL=false ./install.sh
+#
+# Auto-install installs: NGINX, MySQL, WordPress, PHP, Node.js, Python, FileManager, SSL, Monitoring, Backup
 
 set -e
 
@@ -16,12 +23,13 @@ NC='\033[0m' # No Color
 # Global variables
 INSTALL_DIR="/opt/server-panel"
 DATA_DIR="/var/server-panel"
-WEB_SERVER=""
-DATABASE=""
+WEB_SERVER="nginx"
+DATABASE="mysql"
 APPS=()
-INSTALL_FILEMANAGER=""
-DOMAIN=""
-EMAIL=""
+INSTALL_FILEMANAGER="yes"
+DOMAIN="${1:-panel.localhost}"
+EMAIL="${2:-admin@localhost}"
+AUTO_INSTALL="${AUTO_INSTALL:-true}"
 
 # Check if running as root
 check_root() {
@@ -44,20 +52,28 @@ check_os() {
     fi
 }
 
-# Install dialog for interactive menus
+# Install dialog for interactive menus (only if not auto-installing)
 install_dialog() {
-    echo -e "${BLUE}Installing dialog for interactive menus...${NC}"
-    if command -v apt-get >/dev/null 2>&1; then
-        apt-get update && apt-get install -y dialog
-    elif command -v yum >/dev/null 2>&1; then
-        yum install -y dialog
-    elif command -v dnf >/dev/null 2>&1; then
-        dnf install -y dialog
+    if [[ "$AUTO_INSTALL" != "true" ]]; then
+        echo -e "${BLUE}Installing dialog for interactive menus...${NC}"
+        if command -v apt-get >/dev/null 2>&1; then
+            apt-get update && apt-get install -y dialog
+        elif command -v yum >/dev/null 2>&1; then
+            yum install -y dialog
+        elif command -v dnf >/dev/null 2>&1; then
+            dnf install -y dialog
+        fi
     fi
 }
 
 # Main configuration menu
 show_main_menu() {
+    if [[ "$AUTO_INSTALL" == "true" ]]; then
+        # Auto-install all components
+        echo "nginx mysql wordpress php nodejs python filemanager ssl monitoring backup"
+        return
+    fi
+    
     local choices
     choices=$(dialog --checklist "Choose components to install:" 22 70 12 \
         "nginx" "NGINX Web Server" on \
@@ -83,6 +99,11 @@ show_main_menu() {
 
 # Web server selection
 select_webserver() {
+    if [[ "$AUTO_INSTALL" == "true" ]]; then
+        WEB_SERVER="nginx"
+        return
+    fi
+    
     local server
     server=$(dialog --radiolist "Select primary web server:" 12 50 2 \
         "nginx" "NGINX (Recommended)" on \
@@ -97,6 +118,11 @@ select_webserver() {
 
 # Database selection
 select_database() {
+    if [[ "$AUTO_INSTALL" == "true" ]]; then
+        DATABASE="mysql"
+        return
+    fi
+    
     local db
     db=$(dialog --radiolist "Select primary database:" 12 50 2 \
         "mysql" "MySQL (Recommended)" on \
@@ -111,6 +137,18 @@ select_database() {
 
 # Domain and email input
 get_domain_info() {
+    if [[ "$AUTO_INSTALL" == "true" ]]; then
+        # Use command line arguments or defaults
+        if [[ -z "$DOMAIN" ]]; then
+            DOMAIN="panel.localhost"
+        fi
+        if [[ -z "$EMAIL" ]]; then
+            EMAIL="admin@localhost"
+        fi
+        echo -e "${BLUE}Using Domain: $DOMAIN, Email: $EMAIL${NC}"
+        return
+    fi
+    
     DOMAIN=$(dialog --inputbox "Enter your domain name (e.g., panel.example.com):" 8 60 3>&1 1>&2 2>&3)
     EMAIL=$(dialog --inputbox "Enter your email for SSL certificates:" 8 60 3>&1 1>&2 2>&3)
     
@@ -227,8 +265,13 @@ install_components() {
     
     # Install SSL support
     if [[ "$selected_components" == *"ssl"* ]]; then
-        echo -e "${GREEN}Setting up SSL/Let's Encrypt...${NC}"
-        bash "$INSTALL_DIR/modules/certbot.sh" "$DOMAIN" "$EMAIL"
+        if [[ "$DOMAIN" == *"localhost"* ]] || [[ "$DOMAIN" == "127.0.0.1" ]]; then
+            echo -e "${YELLOW}Skipping Let's Encrypt SSL for localhost/local domain${NC}"
+            echo -e "${BLUE}SSL will use self-signed certificates${NC}"
+        else
+            echo -e "${GREEN}Setting up SSL/Let's Encrypt...${NC}"
+            bash "$INSTALL_DIR/modules/certbot.sh" "$DOMAIN" "$EMAIL"
+        fi
     fi
     
     # Install monitoring if selected
@@ -377,6 +420,13 @@ main() {
     echo -e "${GREEN}========================================${NC}"
     echo ""
     
+    # Check for auto-install mode
+    if [[ "$AUTO_INSTALL" == "true" ]]; then
+        echo -e "${BLUE}Running in AUTO-INSTALL mode${NC}"
+        echo -e "${BLUE}Installing ALL components with NGINX + MySQL${NC}"
+        echo ""
+    fi
+    
     # Preliminary checks
     check_root
     check_os
@@ -391,7 +441,9 @@ main() {
     
     # Start installation
     echo -e "${BLUE}Starting installation with selected components...${NC}"
-    sleep 2
+    if [[ "$AUTO_INSTALL" != "true" ]]; then
+        sleep 2
+    fi
     
     create_directories
     copy_project_files
