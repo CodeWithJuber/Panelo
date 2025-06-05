@@ -280,10 +280,11 @@ After=docker.service
 Requires=docker.service
 
 [Service]
-Type=forking
+Type=oneshot
+RemainAfterExit=yes
 ExecStart=$INSTALL_DIR/scripts/start-panel.sh
 ExecStop=$INSTALL_DIR/scripts/stop-panel.sh
-Restart=always
+TimeoutStartSec=300
 User=root
 
 [Install]
