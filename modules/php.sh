@@ -69,6 +69,7 @@ create_php_templates() {
 create_basic_php_template() {
     local template_dir="$PHP_DATA_DIR/templates/basic"
     create_directory "$template_dir" "root" "root" "755"
+    create_directory "$template_dir/public" "root" "root" "755"
     
     cat > "$template_dir/Dockerfile" << 'EOF'
 FROM php:{{PHP_VERSION}}-fpm-alpine
@@ -511,6 +512,396 @@ volumes:
 networks:
   server-panel:
     external: true
+EOF
+}
+
+# Create CodeIgniter template
+create_codeigniter_template() {
+    local template_dir="$PHP_DATA_DIR/templates/codeigniter"
+    create_directory "$template_dir" "root" "root" "755"
+    create_directory "$template_dir/public" "root" "root" "755"
+    
+    cat > "$template_dir/Dockerfile" << 'EOF'
+FROM php:{{PHP_VERSION}}-fpm-alpine
+
+# Install system dependencies
+RUN apk add --no-cache \
+    freetype-dev \
+    libjpeg-turbo-dev \
+    libpng-dev \
+    libzip-dev \
+    icu-dev \
+    oniguruma-dev
+
+# Install PHP extensions
+RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install -j$(nproc) \
+    gd \
+    mysqli \
+    pdo \
+    pdo_mysql \
+    zip \
+    intl \
+    mbstring \
+    opcache
+
+# Install Composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+# Set working directory
+WORKDIR /var/www/html
+
+# Copy application
+COPY . .
+
+# Set permissions
+RUN chown -R www-data:www-data /var/www/html \
+    && chmod -R 775 /var/www/html/writable
+
+# Install dependencies
+RUN composer install --no-dev --optimize-autoloader
+
+EXPOSE 9000
+
+CMD ["php-fpm"]
+EOF
+
+    cat > "$template_dir/docker-compose.yml" << 'EOF'
+version: '3.8'
+
+services:
+  php:
+    build: .
+    container_name: {{CONTAINER_NAME}}
+    restart: unless-stopped
+    networks:
+      - server-panel
+    volumes:
+      - ./:/var/www/html
+    environment:
+      - CI_ENVIRONMENT=production
+      - database.default.hostname=mysql
+      - database.default.database={{DB_NAME}}
+      - database.default.username={{DB_USER}}
+      - database.default.password={{DB_PASSWORD}}
+    labels:
+      - "panel.app={{APP_NAME}}"
+      - "panel.domain={{DOMAIN}}"
+      - "panel.user={{USER_ID}}"
+      - "panel.type=codeigniter"
+
+  nginx:
+    image: nginx:alpine
+    container_name: {{CONTAINER_NAME}}-nginx
+    restart: unless-stopped
+    networks:
+      - server-panel
+    ports:
+      - "{{PORT}}:80"
+    volumes:
+      - ./:/var/www/html
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - php
+    labels:
+      - "panel.app={{APP_NAME}}"
+      - "panel.domain={{DOMAIN}}"
+
+networks:
+  server-panel:
+    external: true
+EOF
+
+    cat > "$template_dir/nginx.conf" << 'EOF'
+server {
+    listen 80;
+    server_name {{DOMAIN}};
+    root /var/www/html/public;
+    index index.php;
+
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header X-Content-Type-Options "nosniff" always;
+
+    # CodeIgniter specific configurations
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location ~ \.php$ {
+        fastcgi_pass php:9000;
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+        include fastcgi_params;
+    }
+
+    location ~ /\.(?!well-known).* {
+        deny all;
+    }
+
+    # Cache static assets
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+}
+EOF
+
+    cat > "$template_dir/public/index.php" << 'EOF'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeIgniter Application</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #333; border-bottom: 2px solid #dd4814; padding-bottom: 10px; }
+        .info { background: #f8e8e8; padding: 20px; border-radius: 5px; margin: 20px 0; }
+        .feature { background: #fff8f0; padding: 15px; margin: 10px 0; border-left: 4px solid #dd4814; }
+        pre { background: #f4f4f4; padding: 15px; border-radius: 5px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔥 Welcome to CodeIgniter!</h1>
+        
+        <div class="info">
+            <h3>Server Information</h3>
+            <p><strong>PHP Version:</strong> <?php echo PHP_VERSION; ?></p>
+            <p><strong>Server Software:</strong> <?php echo $_SERVER['SERVER_SOFTWARE'] ?? 'Unknown'; ?></p>
+            <p><strong>Server Time:</strong> <?php echo date('Y-m-d H:i:s T'); ?></p>
+            <p><strong>Document Root:</strong> <?php echo $_SERVER['DOCUMENT_ROOT']; ?></p>
+        </div>
+
+        <div class="feature">
+            <h3>🚀 Getting Started with CodeIgniter</h3>
+            <p>Your CodeIgniter application is ready! Here's what you can do:</p>
+            <ul>
+                <li>Create controllers in the <code>Controllers/</code> directory</li>
+                <li>Add views in the <code>Views/</code> directory</li>
+                <li>Create models in the <code>Models/</code> directory</li>
+                <li>Configure your routes in <code>Config/Routes.php</code></li>
+            </ul>
+        </div>
+
+        <div class="feature">
+            <h3>📚 CodeIgniter Features</h3>
+            <ul>
+                <li><strong>MVC Architecture:</strong> Clean separation of concerns</li>
+                <li><strong>Database Integration:</strong> Built-in database abstraction</li>
+                <li><strong>Form Validation:</strong> Robust validation system</li>
+                <li><strong>Session Management:</strong> Secure session handling</li>
+                <li><strong>Security:</strong> CSRF protection and XSS filtering</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>
+EOF
+}
+
+# Create Symfony template
+create_symfony_template() {
+    local template_dir="$PHP_DATA_DIR/templates/symfony"
+    create_directory "$template_dir" "root" "root" "755"
+    create_directory "$template_dir/public" "root" "root" "755"
+    
+    cat > "$template_dir/Dockerfile" << 'EOF'
+FROM php:{{PHP_VERSION}}-fpm-alpine
+
+# Install system dependencies
+RUN apk add --no-cache \
+    freetype-dev \
+    libjpeg-turbo-dev \
+    libpng-dev \
+    libzip-dev \
+    icu-dev \
+    oniguruma-dev \
+    nodejs \
+    npm
+
+# Install PHP extensions
+RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install -j$(nproc) \
+    gd \
+    mysqli \
+    pdo \
+    pdo_mysql \
+    zip \
+    intl \
+    mbstring \
+    opcache \
+    bcmath
+
+# Install Composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+# Set working directory
+WORKDIR /var/www/html
+
+# Copy application
+COPY . .
+
+# Set permissions
+RUN chown -R www-data:www-data /var/www/html \
+    && chmod -R 775 /var/www/html/var
+
+# Install dependencies
+RUN composer install --no-dev --optimize-autoloader
+
+# Install and build frontend assets
+RUN if [ -f package.json ]; then npm install && npm run build; fi
+
+EXPOSE 9000
+
+CMD ["php-fpm"]
+EOF
+
+    cat > "$template_dir/docker-compose.yml" << 'EOF'
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: {{CONTAINER_NAME}}
+    restart: unless-stopped
+    networks:
+      - server-panel
+    volumes:
+      - ./:/var/www/html
+    environment:
+      - APP_ENV=prod
+      - APP_SECRET={{APP_SECRET}}
+      - DATABASE_URL=mysql://{{DB_USER}}:{{DB_PASSWORD}}@mysql:3306/{{DB_NAME}}
+    labels:
+      - "panel.app={{APP_NAME}}"
+      - "panel.domain={{DOMAIN}}"
+      - "panel.user={{USER_ID}}"
+      - "panel.type=symfony"
+
+  nginx:
+    image: nginx:alpine
+    container_name: {{CONTAINER_NAME}}-nginx
+    restart: unless-stopped
+    networks:
+      - server-panel
+    ports:
+      - "{{PORT}}:80"
+    volumes:
+      - ./:/var/www/html
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - app
+    labels:
+      - "panel.app={{APP_NAME}}"
+      - "panel.domain={{DOMAIN}}"
+
+networks:
+  server-panel:
+    external: true
+EOF
+
+    cat > "$template_dir/nginx.conf" << 'EOF'
+server {
+    listen 80;
+    server_name {{DOMAIN}};
+    root /var/www/html/public;
+    index index.php;
+
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header X-Content-Type-Options "nosniff" always;
+
+    # Symfony specific configurations
+    location / {
+        try_files $uri $uri/ /index.php$is_args$args;
+    }
+
+    location ~ \.php$ {
+        fastcgi_pass app:9000;
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+        include fastcgi_params;
+    }
+
+    location ~ /\.(?!well-known).* {
+        deny all;
+    }
+
+    # Cache static assets
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+}
+EOF
+
+    cat > "$template_dir/public/index.php" << 'EOF'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Symfony Application</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #333; border-bottom: 2px solid #326295; padding-bottom: 10px; }
+        .info { background: #e8f4f8; padding: 20px; border-radius: 5px; margin: 20px 0; }
+        .feature { background: #f0f8ff; padding: 15px; margin: 10px 0; border-left: 4px solid #326295; }
+        pre { background: #f4f4f4; padding: 15px; border-radius: 5px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎵 Welcome to Symfony!</h1>
+        
+        <div class="info">
+            <h3>Server Information</h3>
+            <p><strong>PHP Version:</strong> <?php echo PHP_VERSION; ?></p>
+            <p><strong>Server Software:</strong> <?php echo $_SERVER['SERVER_SOFTWARE'] ?? 'Unknown'; ?></p>
+            <p><strong>Server Time:</strong> <?php echo date('Y-m-d H:i:s T'); ?></p>
+            <p><strong>Document Root:</strong> <?php echo $_SERVER['DOCUMENT_ROOT']; ?></p>
+        </div>
+
+        <div class="feature">
+            <h3>🚀 Getting Started with Symfony</h3>
+            <p>Your Symfony application is ready! Here's what you can do:</p>
+            <ul>
+                <li>Create controllers using <code>bin/console make:controller</code></li>
+                <li>Generate entities with <code>bin/console make:entity</code></li>
+                <li>Set up routing in <code>config/routes.yaml</code></li>
+                <li>Create templates in the <code>templates/</code> directory</li>
+            </ul>
+        </div>
+
+        <div class="feature">
+            <h3>🛠 Symfony Components</h3>
+            <ul>
+                <li><strong>HttpFoundation:</strong> HTTP request/response abstraction</li>
+                <li><strong>Routing:</strong> Flexible URL routing system</li>
+                <li><strong>Twig:</strong> Modern template engine</li>
+                <li><strong>Doctrine:</strong> Database ORM integration</li>
+                <li><strong>Security:</strong> Authentication and authorization</li>
+                <li><strong>Form:</strong> Form creation and validation</li>
+            </ul>
+        </div>
+
+        <div class="feature">
+            <h3>🔧 Development Tools</h3>
+            <p>Symfony provides excellent development tools:</p>
+            <ul>
+                <li><strong>Maker Bundle:</strong> Code generation commands</li>
+                <li><strong>Profiler:</strong> Debug toolbar and profiler</li>
+                <li><strong>Flex:</strong> Composer plugin for recipes</li>
+                <li><strong>Console:</strong> Command-line interface</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>
 EOF
 }
 
