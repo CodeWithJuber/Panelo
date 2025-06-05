@@ -1,62 +1,26 @@
 #!/bin/bash
 
-# Certbot SSL Installation Module
+# Certbot SSL Installation Module - SIMPLIFIED VERSION
 # Sets up Let's Encrypt SSL certificates with automatic renewal
 
-# Try to source helper.sh with better error handling
-SCRIPT_DIR="$(dirname "$0")"
-if [[ -f "$SCRIPT_DIR/helper.sh" ]]; then
-    source "$SCRIPT_DIR/helper.sh"
-elif [[ -f "/opt/server-panel/modules/helper.sh" ]]; then
-    source "/opt/server-panel/modules/helper.sh"
-else
-    # Fallback logging functions if helper.sh is not available
-    log() {
-        local level="$1"
-        local message="$2"
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$level] $message"
-    }
-    
-    create_directory() {
-        local dir="$1"
-        local owner="${2:-root}"
-        local group="${3:-root}"
-        local permissions="${4:-755}"
-        
-        mkdir -p "$dir"
-        chown "$owner:$group" "$dir" 2>/dev/null || true
-        chmod "$permissions" "$dir"
-    }
-    
-    validate_domain() {
-        local domain="$1"
-        [[ "$domain" =~ ^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$ ]]
-    }
-    
-    validate_email() {
-        local email="$1"
-        [[ "$email" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]
-    }
-    
-    get_system_info() {
-        local info_type="$1"
-        case "$info_type" in
-            "os")
-                if [[ -f /etc/os-release ]]; then
-                    source /etc/os-release
-                    echo "$ID"
-                else
-                    echo "unknown"
-                fi
-                ;;
-        esac
-    }
-    
-    test_ssl_cert() {
-        local domain="$1"
-        timeout 10 openssl s_client -connect "$domain:443" -servername "$domain" </dev/null >/dev/null 2>&1
-    }
-fi
+# Simple logging function
+log() {
+    local level="$1"
+    local message="$2"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$level] $message"
+}
+
+# Simple domain validation
+validate_domain() {
+    local domain="$1"
+    [[ "$domain" =~ ^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$ ]]
+}
+
+# Simple email validation
+validate_email() {
+    local email="$1"
+    [[ "$email" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]
+}
 
 # SSL configuration
 CERTBOT_EMAIL=""
@@ -69,46 +33,72 @@ install_certbot() {
     local domain="$1"
     local email="$2"
     
-    if [[ -z "$domain" ]] || [[ -z "$email" ]]; then
-        log "ERROR" "Domain and email are required for SSL installation"
-        return 1
+    log "INFO" "Starting SSL installation for domain: $domain with email: $email"
+    
+    # For IP addresses, we skip Let's Encrypt
+    if [[ "$domain" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ "$domain" =~ ^[0-9a-fA-F:]+$ ]]; then
+        log "INFO" "IP address detected: $domain - skipping Let's Encrypt (using self-signed)"
+        return 0
     fi
-    
-    DOMAIN="$domain"
-    CERTBOT_EMAIL="$email"
-    
-    log "INFO" "Starting SSL/Let's Encrypt installation for $domain"
     
     # Validate inputs
     if ! validate_domain "$domain"; then
-        log "ERROR" "Invalid domain name: $domain"
+        log "ERROR" "Invalid domain: $domain"
         return 1
     fi
     
     if ! validate_email "$email"; then
-        log "ERROR" "Invalid email address: $email"
+        log "ERROR" "Invalid email: $email"
         return 1
     fi
     
-    # Install Certbot
-    install_certbot_package
+    # Check if certbot is installed
+    if ! command -v certbot >/dev/null 2>&1; then
+        log "INFO" "Installing certbot..."
+        
+        # Install certbot based on OS
+        if command -v apt-get >/dev/null 2>&1; then
+            apt-get update
+            apt-get install -y snapd
+            snap install core
+            snap refresh core
+            snap install --classic certbot
+            ln -sf /snap/bin/certbot /usr/bin/certbot
+        elif command -v yum >/dev/null 2>&1; then
+            yum install -y epel-release
+            yum install -y certbot python3-certbot-nginx
+        else
+            log "ERROR" "Unsupported OS for certbot installation"
+            return 1
+        fi
+    fi
     
-    # Setup webroot directory
-    setup_webroot
+    # Create webroot directory
+    mkdir -p /var/www/html/.well-known/acme-challenge
+    chown -R www-data:www-data /var/www/html/.well-known 2>/dev/null || chown -R nginx:nginx /var/www/html/.well-known 2>/dev/null || true
     
-    # Obtain SSL certificate
-    obtain_ssl_certificate
+    # Try to obtain certificate
+    log "INFO" "Obtaining SSL certificate for $domain"
+    certbot certonly \
+        --webroot \
+        --webroot-path="/var/www/html" \
+        --email "$email" \
+        --agree-tos \
+        --non-interactive \
+        --domains "$domain" \
+        --verbose
     
-    # Configure automatic renewal
-    setup_ssl_renewal
-    
-    # Update NGINX configuration
-    update_nginx_ssl_config
-    
-    # Verify SSL installation
-    verify_ssl_installation
-    
-    log "SUCCESS" "SSL/Let's Encrypt installation completed for $domain"
+    if [[ $? -eq 0 ]]; then
+        log "SUCCESS" "SSL certificate obtained for $domain"
+        
+        # Reload web server
+        systemctl reload nginx 2>/dev/null || systemctl reload apache2 2>/dev/null || true
+        
+        return 0
+    else
+        log "ERROR" "Failed to obtain SSL certificate for $domain"
+        return 1
+    fi
 }
 
 install_certbot_package() {
