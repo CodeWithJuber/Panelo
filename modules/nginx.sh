@@ -86,9 +86,21 @@ configure_nginx() {
     # Backup original configuration
     backup_config "/etc/nginx/nginx.conf"
     
+    # Determine the correct user for NGINX
+    local nginx_user
+    if id -u www-data >/dev/null 2>&1; then
+        nginx_user="www-data"
+    elif id -u nginx >/dev/null 2>&1; then
+        nginx_user="nginx"
+    else
+        # Create nginx user if it doesn't exist
+        useradd -r -d /var/cache/nginx -s /bin/false nginx
+        nginx_user="nginx"
+    fi
+    
     # Create main NGINX configuration
-    cat > /etc/nginx/nginx.conf << 'EOF'
-user nginx;
+    cat > /etc/nginx/nginx.conf << EOF
+user $nginx_user;
 worker_processes auto;
 error_log /var/log/nginx/error.log;
 pid /run/nginx.pid;
@@ -566,11 +578,46 @@ remove_app_proxy() {
     fi
 }
 
+# Repair NGINX configuration
+repair_nginx_config() {
+    log "INFO" "Repairing NGINX configuration"
+    
+    # Determine the correct user for NGINX
+    local nginx_user
+    if id -u www-data >/dev/null 2>&1; then
+        nginx_user="www-data"
+    elif id -u nginx >/dev/null 2>&1; then
+        nginx_user="nginx"
+    else
+        # Create nginx user if it doesn't exist
+        useradd -r -d /var/cache/nginx -s /bin/false nginx
+        nginx_user="nginx"
+    fi
+    
+    log "INFO" "Setting NGINX user to: $nginx_user"
+    
+    # Fix the user directive in nginx.conf
+    sed -i "s/^user .*/user $nginx_user;/" /etc/nginx/nginx.conf
+    
+    # Test configuration
+    if nginx -t; then
+        log "SUCCESS" "NGINX configuration repaired and tested successfully"
+        systemctl restart nginx
+        log "SUCCESS" "NGINX service restarted"
+    else
+        log "ERROR" "NGINX configuration test still failing"
+        return 1
+    fi
+}
+
 # Main execution
 main() {
     case "${1:-install}" in
         "install")
             install_nginx
+            ;;
+        "repair")
+            repair_nginx_config
             ;;
         "create-site")
             create_panel_site "$2"
@@ -585,7 +632,7 @@ main() {
             remove_app_proxy "$2"
             ;;
         *)
-            echo "Usage: $0 [install|create-site|add-auth|add-proxy|remove-proxy]"
+            echo "Usage: $0 [install|repair|create-site|add-auth|add-proxy|remove-proxy]"
             exit 1
             ;;
     esac
