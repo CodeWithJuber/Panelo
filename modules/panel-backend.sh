@@ -1829,7 +1829,7 @@ export class AppsService {
       relations: ['user'] 
     });
     if (!app) {
-      throw new NotFoundException(\`App with ID \${id} not found\`);
+      throw new NotFoundException(`App with ID ${id} not found`);
     }
     return app;
   }
@@ -1886,7 +1886,7 @@ export class AppsService {
           );
           break;
         default:
-          throw new Error(\`Unsupported app type: \${appData.type}\`);
+          throw new Error(`Unsupported app type: ${appData.type}`);
       }
 
       // Update app with container ID and running status
