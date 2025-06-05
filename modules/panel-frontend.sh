@@ -365,7 +365,7 @@ import {
   CogIcon,
   DatabaseIcon,
   ShieldCheckIcon,
-  ChartBarIcon,
+  BarChart3Icon,
   UserGroupIcon
 } from 'lucide-react'
 
@@ -375,7 +375,7 @@ const navigation = [
   { name: 'File Manager', href: '/files', icon: FolderIcon },
   { name: 'Databases', href: '/databases', icon: DatabaseIcon },
   { name: 'SSL Certificates', href: '/ssl', icon: ShieldCheckIcon },
-  { name: 'Analytics', href: '/analytics', icon: ChartBarIcon },
+  { name: 'Analytics', href: '/analytics', icon: BarChart3Icon },
   { name: 'Users', href: '/users', icon: UserGroupIcon },
   { name: 'Settings', href: '/settings', icon: CogIcon },
 ]
