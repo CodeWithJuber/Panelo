@@ -2320,6 +2320,18 @@ build_backend() {
 complete_backend_setup() {
     log "INFO" "Completing backend setup"
     
+    # Set MySQL credentials
+    local MYSQL_PANEL_USER="panel_user"
+    local MYSQL_PANEL_PASSWORD
+    
+    # Get MySQL root password if available
+    if [[ -f "/var/server-panel/mysql-root-password" ]]; then
+        MYSQL_PANEL_PASSWORD=$(cat /var/server-panel/mysql-root-password)
+        MYSQL_PANEL_USER="root"
+    else
+        MYSQL_PANEL_PASSWORD=$(openssl rand -base64 16)
+    fi
+    
     # Install dependencies
     cd "$BACKEND_DIR"
     npm install
@@ -2337,8 +2349,8 @@ DB_NAME=server_panel
 DB_USERNAME=$MYSQL_PANEL_USER
 DB_PASSWORD=$MYSQL_PANEL_PASSWORD
 JWT_SECRET=$(openssl rand -base64 32)
-ADMIN_EMAIL=$EMAIL
-FRONTEND_URL=https://$DOMAIN:3000
+ADMIN_EMAIL=${EMAIL:-admin@localhost}
+FRONTEND_URL=https://${DOMAIN:-localhost}:3000
 EOF
 
     # Set permissions
