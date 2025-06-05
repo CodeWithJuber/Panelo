@@ -306,14 +306,54 @@ final_setup() {
     # Create startup script
     cat > "$INSTALL_DIR/scripts/start-panel.sh" << 'EOF'
 #!/bin/bash
-cd /opt/server-panel/panel
-docker-compose up -d
+
+echo "Starting Server Panel services..."
+
+# Start backend services
+echo "Starting backend services..."
+cd /opt/server-panel/backend
+if [ -f "docker-compose.yml" ]; then
+    docker compose up -d
+    echo "Backend services started"
+else
+    echo "Warning: Backend docker-compose.yml not found"
+fi
+
+# Start frontend services  
+echo "Starting frontend services..."
+cd /opt/server-panel/panel/frontend
+if [ -f "docker-compose.yml" ]; then
+    docker compose up -d
+    echo "Frontend services started"
+else
+    echo "Warning: Frontend docker-compose.yml not found"
+fi
+
+echo "Server panel services startup completed!"
 EOF
     
     cat > "$INSTALL_DIR/scripts/stop-panel.sh" << 'EOF'
 #!/bin/bash
-cd /opt/server-panel/panel
-docker-compose down
+
+echo "Stopping Server Panel services..."
+
+# Stop frontend services  
+echo "Stopping frontend services..."
+cd /opt/server-panel/panel/frontend
+if [ -f "docker-compose.yml" ]; then
+    docker compose down
+    echo "Frontend services stopped"
+fi
+
+# Stop backend services
+echo "Stopping backend services..."
+cd /opt/server-panel/backend
+if [ -f "docker-compose.yml" ]; then
+    docker compose down
+    echo "Backend services stopped"
+fi
+
+echo "Server panel services stopped!"
 EOF
     
     chmod +x "$INSTALL_DIR/scripts"/*.sh
