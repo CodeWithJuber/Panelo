@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Server Panel Frontend Installation Module
-# Creates and deploys the frontend interface
+# Panel Frontend Module - Permanent Solution
+# Creates a simple, modern frontend dashboard
 
 set -e
 
@@ -10,34 +10,38 @@ if [[ -f "/opt/server-panel/modules/helper.sh" ]]; then
     source "/opt/server-panel/modules/helper.sh"
 else
     # Fallback logging functions
-    log() { echo "[$1] $2"; }
+    log() {
+        echo "[$1] $2"
+    }
 fi
 
 # Configuration
-PANEL_FRONTEND_DIR="/opt/server-panel/panel/frontend"
-PANEL_DOMAIN="${1:-localhost}"
+FRONTEND_DIR="/opt/server-panel/frontend"
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
-
-create_frontend_structure() {
-    log "INFO" "Creating frontend directory structure"
+# Install frontend
+install_frontend() {
+    log "INFO" "Installing Panel Frontend"
     
-    mkdir -p "$PANEL_FRONTEND_DIR"
-    cd "$PANEL_FRONTEND_DIR"
+    # Create frontend directory structure
+    mkdir -p "$FRONTEND_DIR"/{public,src}
+    cd "$FRONTEND_DIR"
     
-    log "SUCCESS" "Frontend structure created"
+    # Create all necessary files
+    create_package_json
+    create_main_server
+    create_dashboard_files
+    create_docker_config
+    install_dependencies
+    deploy_frontend
+    
+    log "SUCCESS" "Panel Frontend installation completed"
+    log "INFO" "Frontend available at: http://0.0.0.0:3000"
 }
 
-create_simple_frontend() {
-    log "INFO" "Creating simple frontend application"
+create_package_json() {
+    log "INFO" "Creating package.json"
     
-    # Create package.json
-    cat > "$PANEL_FRONTEND_DIR/package.json" << 'EOF'
+    cat > "$FRONTEND_DIR/package.json" << 'EOF'
 {
   "name": "panelo-frontend",
   "version": "1.0.0",
@@ -47,381 +51,518 @@ create_simple_frontend() {
     "start": "node server.js",
     "dev": "node server.js"
   },
+  "keywords": ["panelo", "cpanel", "server", "panel", "frontend"],
+  "author": "Panelo Team",
+  "license": "MIT",
   "dependencies": {
-    "express": "^4.18.2"
+    "express": "^4.18.2",
+    "express-handlebars": "^7.0.7"
   }
 }
 EOF
 
-    # Create frontend server
-    cat > "$PANEL_FRONTEND_DIR/server.js" << 'EOF'
+    log "SUCCESS" "Package.json created"
+}
+
+create_main_server() {
+    log "INFO" "Creating main server file"
+    
+    cat > "$FRONTEND_DIR/server.js" << 'EOF'
 const express = require('express');
 const path = require('path');
+const { engine } = require('express-handlebars');
+
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Serve static files
-app.use(express.static('public'));
+// Set up Handlebars engine
+app.engine('handlebars', engine({
+    defaultLayout: 'main',
+    layoutsDir: path.join(__dirname, 'views/layouts'),
+    partialsDir: path.join(__dirname, 'views/partials')
+}));
+app.set('view engine', 'handlebars');
+app.set('views', path.join(__dirname, 'views'));
 
-// Get server IP for dynamic links
-function getServerIP(req) {
-    return req.get('host').split(':')[0];
+// Static files
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Routes
+app.get('/', (req, res) => {
+    res.render('dashboard', {
+        title: 'Panelo Dashboard',
+        serverInfo: {
+            hostname: 'server.example.com',
+            uptime: '2 days, 14 hours',
+            load: '0.45',
+            memory: '45%',
+            disk: '23%'
+        }
+    });
+});
+
+app.get('/apps', (req, res) => {
+    res.render('apps', {
+        title: 'Applications - Panelo',
+        apps: [
+            { name: 'WordPress Blog', type: 'wordpress', status: 'running' },
+            { name: 'Node.js API', type: 'nodejs', status: 'running' },
+            { name: 'PHP Website', type: 'php', status: 'stopped' }
+        ]
+    });
+});
+
+app.get('/files', (req, res) => {
+    res.redirect('http://localhost:8080');
+});
+
+app.get('/databases', (req, res) => {
+    res.render('databases', {
+        title: 'Databases - Panelo',
+        databases: [
+            { name: 'wordpress_db', type: 'MySQL', size: '45MB' },
+            { name: 'app_data', type: 'MySQL', size: '128MB' }
+        ]
+    });
+});
+
+app.get('/domains', (req, res) => {
+    res.render('domains', {
+        title: 'Domains - Panelo',
+        domains: [
+            { name: 'example.com', status: 'active', ssl: true },
+            { name: 'blog.example.com', status: 'active', ssl: true }
+        ]
+    });
+});
+
+app.get('/monitoring', (req, res) => {
+    res.redirect('http://localhost:3000/grafana');
+});
+
+// Start server
+app.listen(port, '0.0.0.0', () => {
+    console.log(`🚀 Panelo Frontend running on http://0.0.0.0:${port}`);
+    console.log(`📊 Dashboard: http://0.0.0.0:${port}`);
+});
+EOF
+
+    log "SUCCESS" "Main server file created"
 }
 
-// Main dashboard route
-app.get('/', (req, res) => {
-    const serverIP = getServerIP(req);
+create_dashboard_files() {
+    log "INFO" "Creating dashboard files"
     
-    res.send(`
+    # Create views directory structure
+    mkdir -p "$FRONTEND_DIR/views"/{layouts,partials}
+    
+    # Main layout
+    cat > "$FRONTEND_DIR/views/layouts/main.handlebars" << 'EOF'
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Panelo - Complete cPanel Alternative</title>
+    <title>{{title}}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
-            color: #333;
         }
-        
-        .header {
+        .sidebar {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .main-content {
             background: rgba(255, 255, 255, 0.95);
             backdrop-filter: blur(10px);
-            padding: 1rem 2rem;
-            box-shadow: 0 2px 20px rgba(0,0,0,0.1);
-        }
-        
-        .header h1 {
-            font-size: 2.5rem;
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            margin: 0;
-        }
-        
-        .header p {
-            color: #666;
-            margin-top: 0.5rem;
-        }
-        
-        .container {
-            max-width: 1200px;
-            margin: 2rem auto;
-            padding: 0 2rem;
-        }
-        
-        .status-card {
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 20px;
-            padding: 2rem;
-            margin-bottom: 2rem;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
-            text-align: center;
-        }
-        
-        .status-badge {
-            display: inline-block;
-            background: #10b981;
-            color: white;
-            padding: 0.75rem 1.5rem;
-            border-radius: 25px;
-            font-weight: 600;
-            font-size: 1.1rem;
-            margin-bottom: 1rem;
-        }
-        
-        .services-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 2rem;
-            margin-top: 2rem;
-        }
-        
-        .service-card {
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 20px;
-            padding: 2rem;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
-            transition: all 0.3s ease;
-            text-decoration: none;
-            color: inherit;
-            display: block;
-        }
-        
-        .service-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 20px 60px rgba(0,0,0,0.15);
-        }
-        
-        .service-icon {
-            font-size: 3rem;
-            margin-bottom: 1rem;
-        }
-        
-        .service-title {
-            font-size: 1.5rem;
-            font-weight: 600;
-            margin-bottom: 0.5rem;
-            color: #333;
-        }
-        
-        .service-description {
-            color: #666;
-            margin-bottom: 1rem;
-        }
-        
-        .service-status {
-            display: inline-block;
-            padding: 0.25rem 0.75rem;
             border-radius: 15px;
-            font-size: 0.875rem;
-            font-weight: 500;
+            border: 1px solid rgba(255, 255, 255, 0.2);
         }
-        
-        .status-online {
-            background: #dcfce7;
-            color: #15803d;
-        }
-        
-        .footer {
-            text-align: center;
-            padding: 2rem;
-            color: rgba(255, 255, 255, 0.8);
-        }
-        
-        .quick-stats {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 1rem;
-            margin: 2rem 0;
-        }
-        
-        .stat-item {
-            background: rgba(255, 255, 255, 0.1);
+        .card {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
             border-radius: 15px;
-            padding: 1.5rem;
-            text-align: center;
+        }
+        .nav-link {
+            color: white !important;
+            border-radius: 10px;
+            margin: 5px 0;
+        }
+        .nav-link:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        .nav-link.active {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        .stats-card {
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
             color: white;
+            border-radius: 15px;
+            border: none;
         }
-        
-        .stat-number {
-            font-size: 2rem;
-            font-weight: bold;
-            margin-bottom: 0.5rem;
+        .stats-card.success {
+            background: linear-gradient(45deg, #00d2d3, #54a0ff);
         }
-        
-        .stat-label {
-            opacity: 0.9;
+        .stats-card.warning {
+            background: linear-gradient(45deg, #feca57, #ff9ff3);
         }
-        
-        @media (max-width: 768px) {
-            .header {
-                padding: 1rem;
-            }
-            
-            .header h1 {
-                font-size: 2rem;
-            }
-            
-            .container {
-                padding: 0 1rem;
-            }
-            
-            .services-grid {
-                grid-template-columns: 1fr;
-                gap: 1rem;
-            }
+        .stats-card.info {
+            background: linear-gradient(45deg, #48dbfb, #0abde3);
         }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>🚀 Panelo</h1>
-        <p>Complete cPanel Alternative - Server Management Made Easy</p>
-    </div>
-    
-    <div class="container">
-        <div class="status-card">
-            <div class="status-badge">✅ SYSTEM ONLINE</div>
-            <h2>Welcome to Your Server Panel</h2>
-            <p>All services are running and ready to use</p>
-        </div>
-        
-        <div class="quick-stats">
-            <div class="stat-item">
-                <div class="stat-number">3</div>
-                <div class="stat-label">Active Services</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-number">100%</div>
-                <div class="stat-label">Uptime</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-number">${serverIP}</div>
-                <div class="stat-label">Server IP</div>
-            </div>
-        </div>
-        
-        <div class="services-grid">
-            <a href="http://${serverIP}:3001" class="service-card" target="_blank">
-                <div class="service-icon">🔧</div>
-                <div class="service-title">Backend API</div>
-                <div class="service-description">
-                    REST API for server management, user authentication, and system control
+    <div class="container-fluid p-4">
+        <div class="row">
+            <!-- Sidebar -->
+            <div class="col-md-3 mb-4">
+                <div class="sidebar p-4 h-100">
+                    <h3 class="text-white mb-4">
+                        <i class="fas fa-server me-2"></i>
+                        Panelo
+                    </h3>
+                    <nav class="nav flex-column">
+                        <a class="nav-link" href="/"><i class="fas fa-tachometer-alt me-2"></i>Dashboard</a>
+                        <a class="nav-link" href="/apps"><i class="fas fa-rocket me-2"></i>Applications</a>
+                        <a class="nav-link" href="/files"><i class="fas fa-folder me-2"></i>File Manager</a>
+                        <a class="nav-link" href="/databases"><i class="fas fa-database me-2"></i>Databases</a>
+                        <a class="nav-link" href="/domains"><i class="fas fa-globe me-2"></i>Domains</a>
+                        <a class="nav-link" href="/monitoring"><i class="fas fa-chart-line me-2"></i>Monitoring</a>
+                    </nav>
                 </div>
-                <span class="service-status status-online">ONLINE</span>
-            </a>
+            </div>
             
-            <a href="http://${serverIP}:8080" class="service-card" target="_blank">
-                <div class="service-icon">📁</div>
-                <div class="service-title">File Manager</div>
-                <div class="service-description">
-                    Web-based file manager for uploading, downloading, and managing server files
-                </div>
-                <span class="service-status status-online">ONLINE</span>
-            </a>
-            
-            <a href="http://${serverIP}:3001" class="service-card" target="_blank">
-                <div class="service-icon">📊</div>
-                <div class="service-title">Monitoring</div>
-                <div class="service-description">
-                    System monitoring, performance metrics, and resource usage tracking
-                </div>
-                <span class="service-status status-online">ONLINE</span>
-            </a>
-            
-            <div class="service-card">
-                <div class="service-icon">🛠️</div>
-                <div class="service-title">Quick Actions</div>
-                <div class="service-description">
-                    • Deploy WordPress sites<br>
-                    • Manage PHP/Node.js apps<br>
-                    • Configure SSL certificates<br>
-                    • Monitor system health
+            <!-- Main Content -->
+            <div class="col-md-9">
+                <div class="main-content p-4">
+                    {{{body}}}
                 </div>
             </div>
         </div>
     </div>
     
-    <div class="footer">
-        <p>Panelo v1.0.0 - Open Source cPanel Alternative</p>
-        <p>Built with ❤️ for server administrators</p>
-    </div>
-    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Auto-refresh status every 30 seconds
-        setInterval(() => {
-            fetch('/status')
-                .then(response => response.json())
-                .then(data => {
-                    console.log('Status check:', data);
-                })
-                .catch(error => {
-                    console.log('Status check failed:', error);
-                });
-        }, 30000);
+        // Mark active nav item
+        const currentPath = window.location.pathname;
+        document.querySelectorAll('.nav-link').forEach(link => {
+            if (link.getAttribute('href') === currentPath) {
+                link.classList.add('active');
+            }
+        });
     </script>
 </body>
 </html>
-    `);
-});
-
-// Status endpoint
-app.get('/status', (req, res) => {
-    res.json({
-        status: 'online',
-        timestamp: new Date().toISOString(),
-        services: {
-            frontend: 'online',
-            backend: 'online',
-            filemanager: 'online'
-        },
-        version: '1.0.0'
-    });
-});
-
-// Health check
-app.get('/health', (req, res) => {
-    res.json({ status: 'healthy' });
-});
-
-app.listen(port, '0.0.0.0', () => {
-    console.log(`Panelo Frontend running on http://0.0.0.0:${port}`);
-    console.log(`Access your panel at: http://localhost:${port}`);
-});
 EOF
 
-    # Create public directory
-    mkdir -p "$PANEL_FRONTEND_DIR/public"
+    # Dashboard view
+    cat > "$FRONTEND_DIR/views/dashboard.handlebars" << 'EOF'
+<div class="row mb-4">
+    <div class="col-12">
+        <h1 class="mb-4">
+            <i class="fas fa-tachometer-alt me-2"></i>
+            Server Dashboard
+        </h1>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-3 mb-3">
+        <div class="card stats-card">
+            <div class="card-body text-center">
+                <h5><i class="fas fa-microchip me-2"></i>CPU Usage</h5>
+                <h2>{{serverInfo.load}}%</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stats-card success">
+            <div class="card-body text-center">
+                <h5><i class="fas fa-memory me-2"></i>Memory</h5>
+                <h2>{{serverInfo.memory}}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stats-card warning">
+            <div class="card-body text-center">
+                <h5><i class="fas fa-hdd me-2"></i>Disk Usage</h5>
+                <h2>{{serverInfo.disk}}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stats-card info">
+            <div class="card-body text-center">
+                <h5><i class="fas fa-clock me-2"></i>Uptime</h5>
+                <h6>{{serverInfo.uptime}}</h6>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-rocket me-2"></i>Quick Actions</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="/apps" class="btn btn-primary">
+                        <i class="fas fa-plus me-2"></i>Deploy Application
+                    </a>
+                    <a href="/files" class="btn btn-success">
+                        <i class="fas fa-upload me-2"></i>Upload Files
+                    </a>
+                    <a href="/databases" class="btn btn-info">
+                        <i class="fas fa-database me-2"></i>Create Database
+                    </a>
+                    <a href="/domains" class="btn btn-warning">
+                        <i class="fas fa-globe me-2"></i>Add Domain
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
     
-    log "SUCCESS" "Simple frontend application created"
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-info-circle me-2"></i>Server Information</h5>
+            </div>
+            <div class="card-body">
+                <p><strong>Hostname:</strong> {{serverInfo.hostname}}</p>
+                <p><strong>Panel Version:</strong> 1.0.0</p>
+                <p><strong>Backend API:</strong> <span class="badge bg-success">Running</span></p>
+                <p><strong>File Manager:</strong> <span class="badge bg-success">Running</span></p>
+                <p><strong>Monitoring:</strong> <span class="badge bg-success">Active</span></p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-chart-line me-2"></i>Recent Activity</h5>
+            </div>
+            <div class="card-body">
+                <div class="list-group">
+                    <div class="list-group-item">
+                        <i class="fas fa-check-circle text-success me-2"></i>
+                        WordPress application deployed successfully
+                        <small class="text-muted float-end">2 hours ago</small>
+                    </div>
+                    <div class="list-group-item">
+                        <i class="fas fa-database text-info me-2"></i>
+                        Database 'wordpress_db' created
+                        <small class="text-muted float-end">3 hours ago</small>
+                    </div>
+                    <div class="list-group-item">
+                        <i class="fas fa-shield-alt text-warning me-2"></i>
+                        SSL certificate renewed for example.com
+                        <small class="text-muted float-end">1 day ago</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+EOF
+
+    # Applications view
+    cat > "$FRONTEND_DIR/views/apps.handlebars" << 'EOF'
+<div class="row mb-4">
+    <div class="col-12">
+        <h1 class="mb-4">
+            <i class="fas fa-rocket me-2"></i>
+            Applications
+        </h1>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-12">
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#deployModal">
+            <i class="fas fa-plus me-2"></i>Deploy New Application
+        </button>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-list me-2"></i>Your Applications</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Type</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {{#each apps}}
+                            <tr>
+                                <td>{{name}}</td>
+                                <td>
+                                    <span class="badge bg-secondary">{{type}}</span>
+                                </td>
+                                <td>
+                                    {{#if (eq status 'running')}}
+                                        <span class="badge bg-success">Running</span>
+                                    {{else}}
+                                        <span class="badge bg-danger">Stopped</span>
+                                    {{/if}}
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-primary">
+                                        <i class="fas fa-play"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-warning">
+                                        <i class="fas fa-pause"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            {{/each}}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Deploy Modal -->
+<div class="modal fade" id="deployModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Deploy New Application</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form>
+                    <div class="mb-3">
+                        <label class="form-label">Application Type</label>
+                        <select class="form-select">
+                            <option>WordPress</option>
+                            <option>Node.js</option>
+                            <option>PHP</option>
+                            <option>Python</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Application Name</label>
+                        <input type="text" class="form-control" placeholder="My App">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Domain</label>
+                        <input type="text" class="form-control" placeholder="myapp.example.com">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary">Deploy</button>
+            </div>
+        </div>
+    </div>
+</div>
+EOF
+
+    # Other views (simplified)
+    cat > "$FRONTEND_DIR/views/databases.handlebars" << 'EOF'
+<h1><i class="fas fa-database me-2"></i>Databases</h1>
+<p>Database management interface</p>
+EOF
+
+    cat > "$FRONTEND_DIR/views/domains.handlebars" << 'EOF'
+<h1><i class="fas fa-globe me-2"></i>Domains</h1>
+<p>Domain management interface</p>
+EOF
+
+    log "SUCCESS" "Dashboard files created"
 }
 
-create_docker_configuration() {
+create_docker_config() {
     log "INFO" "Creating Docker configuration"
     
     # Create Dockerfile
-    cat > "$PANEL_FRONTEND_DIR/Dockerfile" << 'EOF'
+    cat > "$FRONTEND_DIR/Dockerfile" << 'EOF'
 FROM node:18-alpine
 
+# Install basic dependencies
+RUN apk add --no-cache wget curl
+
+# Set working directory
 WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
 
 # Install dependencies
-RUN npm install
+RUN npm install --production && npm cache clean --force
 
 # Copy application files
 COPY . .
 
-# Create non-root user
-RUN addgroup -g 1001 -S nodejs
-RUN adduser -S nextjs -u 1001
-
-# Change ownership
-RUN chown -R nextjs:nodejs /app
-USER nextjs
-
+# Expose port
 EXPOSE 3000
 
-ENV PORT 3000
-ENV HOSTNAME "0.0.0.0"
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD wget --quiet --tries=1 --spider http://localhost:3000 || exit 1
 
+# Start application
 CMD ["npm", "start"]
 EOF
 
-    # Create docker-compose.yml with external access
-    cat > "$PANEL_FRONTEND_DIR/docker-compose.yml" << EOF
+    # Create docker-compose.yml
+    cat > "$FRONTEND_DIR/docker-compose.yml" << 'EOF'
 version: '3.8'
 
 services:
   frontend:
-    build: .
+    build: 
+      context: .
+      dockerfile: Dockerfile
     container_name: server-panel-frontend
     restart: unless-stopped
     ports:
       - "0.0.0.0:3000:3000"
     environment:
       - NODE_ENV=production
-      - PANEL_DOMAIN=$PANEL_DOMAIN
+      - PORT=3000
     networks:
       - server-panel
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
       interval: 30s
       timeout: 10s
-      retries: 3
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 networks:
   server-panel:
@@ -431,84 +572,88 @@ EOF
     log "SUCCESS" "Docker configuration created"
 }
 
-build_and_deploy() {
-    log "INFO" "Building and deploying frontend"
+install_dependencies() {
+    log "INFO" "Installing frontend dependencies"
     
-    cd "$PANEL_FRONTEND_DIR"
+    cd "$FRONTEND_DIR"
     
-    # Build Docker image
-    docker build -t server-panel-frontend:latest .
-    
-    if [[ $? -eq 0 ]]; then
-        log "SUCCESS" "Frontend Docker image built"
-    else
-        log "ERROR" "Failed to build frontend image"
-        return 1
-    fi
-    
-    # Start the container
-    docker compose up -d
+    # Install npm dependencies
+    npm install --production
     
     if [[ $? -eq 0 ]]; then
-        log "SUCCESS" "Frontend container started"
+        log "SUCCESS" "Frontend dependencies installed successfully"
     else
-        log "ERROR" "Failed to start frontend container"
+        log "ERROR" "Failed to install frontend dependencies"
         return 1
-    fi
-    
-    # Wait for container to be ready
-    log "INFO" "Waiting for frontend to be ready..."
-    sleep 10
-    
-    # Test if frontend is responding
-    if curl -s http://localhost:3000/health > /dev/null; then
-        log "SUCCESS" "Frontend is responding"
-    else
-        log "WARNING" "Frontend might not be fully ready yet"
     fi
 }
 
-# Main installation function
-install_panel_frontend() {
-    local domain="${1:-localhost}"
-    PANEL_DOMAIN="$domain"
+deploy_frontend() {
+    log "INFO" "Deploying frontend"
     
-    log "INFO" "Installing Panel Frontend for domain: $domain"
+    cd "$FRONTEND_DIR"
     
     # Ensure Docker network exists
     docker network create server-panel 2>/dev/null || true
     
-    create_frontend_structure
-    create_simple_frontend
-    create_docker_configuration
-    build_and_deploy
+    # Build and start containers
+    docker compose build --no-cache
+    docker compose up -d
     
-    log "SUCCESS" "Panel Frontend installation completed!"
-    log "INFO" "Frontend accessible at: http://$domain:3000"
+    # Wait for services to be ready
+    log "INFO" "Waiting for frontend to be ready..."
+    sleep 10
+    
+    # Check if frontend is responding
+    local max_attempts=20
+    local attempt=1
+    
+    while [[ $attempt -le $max_attempts ]]; do
+        if curl -s http://localhost:3000 > /dev/null 2>&1; then
+            log "SUCCESS" "Frontend is running and accessible"
+            break
+        fi
+        
+        if [[ $attempt -eq $max_attempts ]]; then
+            log "WARNING" "Frontend may not be fully ready yet, check with: docker logs server-panel-frontend"
+        fi
+        
+        sleep 2
+        ((attempt++))
+    done
 }
 
-# Handle different command arguments
+# Handle command line arguments
 case "${1:-install}" in
     "install")
-        install_panel_frontend "$2"
+        install_frontend
         ;;
     "restart")
-        cd "$PANEL_FRONTEND_DIR"
+        cd "$FRONTEND_DIR"
         docker compose restart
         ;;
     "stop")
-        cd "$PANEL_FRONTEND_DIR"
+        cd "$FRONTEND_DIR"
         docker compose down
         ;;
     "start")
-        cd "$PANEL_FRONTEND_DIR"
+        cd "$FRONTEND_DIR"
         docker compose up -d
         ;;
     "logs")
-        docker logs server-panel-frontend
+        docker logs server-panel-frontend -f
+        ;;
+    "status")
+        docker ps | grep server-panel-frontend
         ;;
     *)
-        echo "Usage: $0 [install|restart|stop|start|logs] [domain]"
+        echo "Usage: $0 [install|restart|stop|start|logs|status]"
+        echo "  install  - Install frontend (default)"
+        echo "  restart  - Restart frontend containers"
+        echo "  stop     - Stop frontend containers"
+        echo "  start    - Start frontend containers"
+        echo "  logs     - Show frontend logs"
+        echo "  status   - Show frontend container status"
         exit 1
         ;;
 esac 
