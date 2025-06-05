@@ -63,7 +63,7 @@ services:
     networks:
       - server-panel
     ports:
-      - "127.0.0.1:{{APP_PORT}}:80"
+      - "0.0.0.0:{{APP_PORT}}:80"
     environment:
       WORDPRESS_DB_HOST: "{{DB_HOST}}"
       WORDPRESS_DB_USER: "{{DB_USER}}"

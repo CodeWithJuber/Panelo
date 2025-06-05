@@ -201,7 +201,7 @@ deploy_filemanager_container() {
     docker run -d \
         --name "$FILEBROWSER_CONTAINER_NAME" \
         --network server-panel \
-        -p "127.0.0.1:${FILEBROWSER_PORT}:80" \
+        -p "0.0.0.0:${FILEBROWSER_PORT}:80" \
         -v "$FILEBROWSER_CONFIG_DIR":/config \
         -v "$FILEBROWSER_DATA_DIR":/srv/users \
         -v /var/server-panel/apps:/srv/apps \

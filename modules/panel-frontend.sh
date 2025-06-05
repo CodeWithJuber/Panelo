@@ -857,10 +857,10 @@ services:
     networks:
       - server-panel
     ports:
-      - "127.0.0.1:3000:3000"
+      - "0.0.0.0:3000:3000"
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=http://127.0.0.1:3001
+      - NEXT_PUBLIC_API_URL=http://localhost:3001
       - NEXT_PUBLIC_PANEL_DOMAIN=$PANEL_DOMAIN
     volumes:
       - ./.env.local:/app/.env.local:ro
@@ -874,7 +874,7 @@ services:
     networks:
       - server-panel
     ports:
-      - "127.0.0.1:3001:3001"
+      - "0.0.0.0:3001:3001"
     environment:
       - NODE_ENV=production
     volumes:
@@ -887,7 +887,7 @@ EOF
     
     # Create environment file
     cat > "$PANEL_FRONTEND_DIR/.env.local" << EOF
-NEXT_PUBLIC_API_URL=http://127.0.0.1:3001
+NEXT_PUBLIC_API_URL=http://localhost:3001
 NEXT_PUBLIC_PANEL_DOMAIN=$PANEL_DOMAIN
 NODE_ENV=production
 EOF

@@ -2230,7 +2230,7 @@ services:
     container_name: server-panel-backend
     restart: unless-stopped
     ports:
-      - "127.0.0.1:3001:3001"
+      - "0.0.0.0:3001:3001"
     environment:
       - NODE_ENV=production
     volumes:

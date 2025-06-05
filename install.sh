@@ -361,6 +361,22 @@ else
 fi
 
 echo "Server panel services startup completed!"
+
+# Wait for services to be ready
+sleep 5
+
+# Check service status
+echo "Checking service status..."
+docker ps | grep -E "(panel|server)" || echo "No panel containers found"
+
+# Show access information
+SERVER_IP=$(curl -4 -s ifconfig.me 2>/dev/null || ip route get 8.8.8.8 2>/dev/null | awk '{print $7; exit}' || echo "127.0.0.1")
+echo "========================================="
+echo "🚀 Panel Services Status:"
+echo "• Frontend: http://$SERVER_IP:3000"
+echo "• Backend: http://$SERVER_IP:3001"
+echo "• File Manager: http://$SERVER_IP:8080"
+echo "========================================="
 EOF
     
     cat > "$INSTALL_DIR/scripts/stop-panel.sh" << 'EOF'
