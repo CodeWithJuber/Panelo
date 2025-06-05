@@ -67,6 +67,7 @@ create_nodejs_templates() {
 create_express_template() {
     local template_dir="$NODEJS_DATA_DIR/templates/express"
     create_directory "$template_dir" "root" "root" "755"
+    create_directory "$template_dir/public" "root" "root" "755"
     
     cat > "$template_dir/Dockerfile" << 'EOF'
 FROM node:{{NODE_VERSION}}-alpine
@@ -497,6 +498,514 @@ const nextConfig = {
 }
 
 module.exports = nextConfig
+EOF
+}
+
+# Create NestJS template
+create_nestjs_template() {
+    local template_dir="$NODEJS_DATA_DIR/templates/nestjs"
+    create_directory "$template_dir" "root" "root" "755"
+    create_directory "$template_dir/src" "root" "root" "755"
+    
+    cat > "$template_dir/Dockerfile" << 'EOF'
+FROM node:{{NODE_VERSION}}-alpine
+
+# Install dumb-init
+RUN apk add --no-cache dumb-init
+
+WORKDIR /app
+
+# Create user
+RUN addgroup -g 1001 -S nodejs
+RUN adduser -S nodejs -u 1001
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm ci --only=production && npm cache clean --force
+
+# Copy app source
+COPY . .
+
+# Build the application
+RUN npm run build
+
+# Change ownership
+RUN chown -R nodejs:nodejs /app
+USER nodejs
+
+EXPOSE 3000
+
+# Use dumb-init to handle signals properly
+ENTRYPOINT ["dumb-init", "--"]
+
+CMD ["npm", "run", "start:prod"]
+EOF
+
+    cat > "$template_dir/docker-compose.yml" << 'EOF'
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: {{CONTAINER_NAME}}
+    restart: unless-stopped
+    networks:
+      - server-panel
+    ports:
+      - "{{PORT}}:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    labels:
+      - "panel.app={{APP_NAME}}"
+      - "panel.domain={{DOMAIN}}"
+      - "panel.user={{USER_ID}}"
+      - "panel.type=nestjs"
+
+networks:
+  server-panel:
+    external: true
+EOF
+
+    cat > "$template_dir/package.json" << 'EOF'
+{
+  "name": "{{APP_NAME}}",
+  "version": "1.0.0",
+  "description": "NestJS application deployed with Server Panel",
+  "author": "Server Panel",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "build": "nest build",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+    "start": "nest start",
+    "start:dev": "nest start --watch",
+    "start:debug": "nest start --debug --watch",
+    "start:prod": "node dist/main",
+    "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:cov": "jest --coverage",
+    "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
+    "test:e2e": "jest --config ./test/jest-e2e.json"
+  },
+  "dependencies": {
+    "@nestjs/common": "^10.0.0",
+    "@nestjs/core": "^10.0.0",
+    "@nestjs/platform-express": "^10.0.0",
+    "reflect-metadata": "^0.1.13",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^10.0.0",
+    "@nestjs/schematics": "^10.0.0",
+    "@nestjs/testing": "^10.0.0",
+    "@types/express": "^4.17.17",
+    "@types/jest": "^29.5.2",
+    "@types/node": "^20.3.1",
+    "@types/supertest": "^2.0.12",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.42.0",
+    "eslint-config-prettier": "^9.0.0",
+    "eslint-plugin-prettier": "^5.0.0",
+    "jest": "^29.5.0",
+    "prettier": "^3.0.0",
+    "source-map-support": "^0.5.21",
+    "supertest": "^6.3.3",
+    "ts-jest": "^29.1.0",
+    "ts-loader": "^9.4.3",
+    "ts-node": "^10.9.1",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.1.3"
+  }
+}
+EOF
+
+    cat > "$template_dir/src/main.ts" << 'EOF'
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule);
+  
+  // Enable CORS
+  app.enableCors();
+  
+  // Set global prefix
+  app.setGlobalPrefix('api');
+  
+  const port = process.env.PORT || 3000;
+  await app.listen(port, '0.0.0.0');
+  
+  console.log(`🚀 NestJS application is running on: http://localhost:${port}`);
+  console.log(`📱 App: {{APP_NAME}}`);
+  console.log(`🌐 Domain: {{DOMAIN}}`);
+}
+bootstrap();
+EOF
+
+    cat > "$template_dir/src/app.module.ts" << 'EOF'
+import { Module } from '@nestjs/common';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
+
+@Module({
+  imports: [],
+  controllers: [AppController],
+  providers: [AppService],
+})
+export class AppModule {}
+EOF
+
+    cat > "$template_dir/src/app.controller.ts" << 'EOF'
+import { Controller, Get } from '@nestjs/common';
+import { AppService } from './app.service';
+
+@Controller()
+export class AppController {
+  constructor(private readonly appService: AppService) {}
+
+  @Get()
+  getHello(): string {
+    return this.appService.getHello();
+  }
+
+  @Get('health')
+  getHealth() {
+    return {
+      status: 'healthy',
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+      memory: process.memoryUsage(),
+    };
+  }
+
+  @Get('info')
+  getInfo() {
+    return {
+      app: '{{APP_NAME}}',
+      version: '1.0.0',
+      node: process.version,
+      platform: process.platform,
+      arch: process.arch,
+      pid: process.pid,
+      uptime: process.uptime(),
+    };
+  }
+}
+EOF
+
+    cat > "$template_dir/src/app.service.ts" << 'EOF'
+import { Injectable } from '@nestjs/common';
+
+@Injectable()
+export class AppService {
+  getHello(): string {
+    return 'Welcome to {{APP_NAME}} - Your NestJS Application is running!';
+  }
+}
+EOF
+}
+
+# Create React template
+create_react_template() {
+    local template_dir="$NODEJS_DATA_DIR/templates/react"
+    create_directory "$template_dir" "root" "root" "755"
+    create_directory "$template_dir/src" "root" "root" "755"
+    create_directory "$template_dir/public" "root" "root" "755"
+    
+    cat > "$template_dir/Dockerfile" << 'EOF'
+# Build stage
+FROM node:{{NODE_VERSION}}-alpine as build
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm ci
+
+# Copy source code
+COPY . .
+
+# Build the app
+RUN npm run build
+
+# Production stage
+FROM nginx:alpine
+
+# Copy built app from build stage
+COPY --from=build /app/build /usr/share/nginx/html
+
+# Copy nginx configuration
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
+EOF
+
+    cat > "$template_dir/docker-compose.yml" << 'EOF'
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: {{CONTAINER_NAME}}
+    restart: unless-stopped
+    networks:
+      - server-panel
+    ports:
+      - "{{PORT}}:80"
+    labels:
+      - "panel.app={{APP_NAME}}"
+      - "panel.domain={{DOMAIN}}"
+      - "panel.user={{USER_ID}}"
+      - "panel.type=react"
+
+networks:
+  server-panel:
+    external: true
+EOF
+
+    cat > "$template_dir/package.json" << 'EOF'
+{
+  "name": "{{APP_NAME}}",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@testing-library/jest-dom": "^5.16.4",
+    "@testing-library/react": "^13.3.0",
+    "@testing-library/user-event": "^13.5.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-scripts": "5.0.1",
+    "web-vitals": "^2.1.4"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app",
+      "react-app/jest"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}
+EOF
+
+    cat > "$template_dir/nginx.conf" << 'EOF'
+server {
+    listen 80;
+    server_name {{DOMAIN}};
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Gzip compression
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css text/xml text/javascript application/javascript application/xml+rss application/json;
+
+    # Handle React Router
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Cache static assets
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header X-Content-Type-Options "nosniff" always;
+}
+EOF
+
+    cat > "$template_dir/public/index.html" << 'EOF'
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="description" content="{{APP_NAME}} - React Application" />
+    <title>{{APP_NAME}}</title>
+  </head>
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+  </body>
+</html>
+EOF
+
+    cat > "$template_dir/src/index.js" << 'EOF'
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import './index.css';
+import App from './App';
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+EOF
+
+    cat > "$template_dir/src/App.js" << 'EOF'
+import React from 'react';
+import './App.css';
+
+function App() {
+  return (
+    <div className="App">
+      <header className="App-header">
+        <h1>🚀 {{APP_NAME}}</h1>
+        <p>Welcome to your React Application!</p>
+        <div className="info-grid">
+          <div className="info-card">
+            <h3>⚛️ React</h3>
+            <p>Modern JavaScript library for building user interfaces</p>
+          </div>
+          <div className="info-card">
+            <h3>🔧 Create React App</h3>
+            <p>Zero configuration setup with hot reloading</p>
+          </div>
+          <div className="info-card">
+            <h3>📦 Production Ready</h3>
+            <p>Optimized build with code splitting and bundling</p>
+          </div>
+        </div>
+        <div className="quick-links">
+          <a href="https://reactjs.org" target="_blank" rel="noopener noreferrer">
+            Learn React
+          </a>
+          <a href="https://create-react-app.dev" target="_blank" rel="noopener noreferrer">
+            Create React App
+          </a>
+        </div>
+      </header>
+    </div>
+  );
+}
+
+export default App;
+EOF
+
+    cat > "$template_dir/src/App.css" << 'EOF'
+.App {
+  text-align: center;
+}
+
+.App-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 40px;
+  color: white;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(10px + 2vmin);
+}
+
+.App-header h1 {
+  margin: 0 0 20px 0;
+  font-size: 3em;
+}
+
+.App-header p {
+  margin: 0 0 40px 0;
+  font-size: 1.2em;
+  opacity: 0.9;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+  margin: 40px 0;
+  max-width: 1000px;
+}
+
+.info-card {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 30px;
+  border-radius: 15px;
+  backdrop-filter: blur(10px);
+}
+
+.info-card h3 {
+  margin: 0 0 15px 0;
+  font-size: 1.3em;
+}
+
+.info-card p {
+  margin: 0;
+  font-size: 0.9em;
+  opacity: 0.8;
+}
+
+.quick-links {
+  margin-top: 40px;
+}
+
+.quick-links a {
+  color: white;
+  text-decoration: none;
+  margin: 0 20px;
+  padding: 12px 24px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 25px;
+  transition: all 0.3s ease;
+  display: inline-block;
+}
+
+.quick-links a:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.6);
+  transform: translateY(-2px);
+}
+EOF
+
+    cat > "$template_dir/src/index.css" << 'EOF'
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
 EOF
 }
 
